@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createEventDispatcher } from 'svelte';
   import LoadingIndicator from './Loading.svelte';
 
   export let mood = '';
@@ -6,6 +7,8 @@
   export let location = '';
   export let requirements: string[] = [];
   export let loading = false;
+
+  const dispatch = createEventDispatcher();
 
   const moodTypes = [
     'Cozy',
@@ -32,6 +35,10 @@
     'Workspace Friendly',
     'Food Menu'
   ];
+
+  function handleSubmit() {
+    dispatch('submit');
+  }
 </script>
 
 <div class="pt-6 md:pt-10 text-slate-200">
@@ -105,7 +112,7 @@
     </div>
 
     <button
-      on:click
+      on:click={handleSubmit}
       class={`${
         loading
           ? 'bg-pink-400/50'
