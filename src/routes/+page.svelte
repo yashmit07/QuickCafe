@@ -1,202 +1,117 @@
-<script>
-	import * as animateScroll from 'svelte-scrollto';
-	import { fade } from 'svelte/transition';
-	import Form from '$lib/Form.svelte';
-	import Home from '$lib/Home.svelte';
-	import Footer from '$lib/Footer.svelte';
-	import Header from '$lib/Header.svelte';
-	import RecommendationCard from '$lib/RecommendationCard.svelte';
-	import { onMount } from 'svelte';
-	import LoadingCard from '$lib/LoadingCard.svelte';
-	let loading = false;
-	let error = '';
-	let endStream = false;
-	let makeRecommendation = false;
+<script lang="ts">
+    import Header from '$lib/Header.svelte';
+    import Footer from '$lib/Footer.svelte';
+    import Home from '$lib/Home.svelte';
+    import Form from '$lib/Form.svelte';
+    import LoadingCard from '$lib/LoadingCard.svelte';
+    import RecommendationCard from '$lib/RecommendationCard.svelte';
 
-	/**
-	 * @type {string}
-	 */
-	let searchResponse = '';
-	/**
-	 * @type {Array<string | {title: string, description: string}>}
-	 */
-	let recommendations = [];
+    let showForm = false;
+    let loading = false;
+    let mood = '';
+    let priceRange = '';
+    let location = '';
+    let requirements: string[] = [];
+    let recommendations: any[] = [];
+    let streamingText = '';
 
-	/**
-	 * @param {string} target
-	 */
+    function handleShowForm() {
+        showForm = true;
+    }
 
-	$: {
-		if (searchResponse) {
-			let lastLength = recommendations.length;
-			let x = searchResponse?.split('\n');
-			recommendations = x.map((d, i) => {
-				if ((x.length - 1 > i || endStream) && d !== '') {
-					// @ts-ignore
-					const [, title, description] = d.match(/\d\.\s*(.*?):\s*(.*)/);
-					return { title, description };
-				} else {
-					return d;
-				}
-			});
-			if (recommendations.length > lastLength) {
-				animateScroll.scrollToBottom({ duration: 1500 });
-			}
-		}
-	}
+    async function handleSubmit() {
+        loading = true;
+        streamingText = '';
+        recommendations = [];
 
-	/**
-	 * @type {string}
-	 */
-	let cinemaType = 'tv show';
-	/**
-	 * @type {Array<string>}
-	 */
-	let selectedCategories = [];
-	let specificDescriptors = '';
+        try {
+            const response = await fetch('/api/getRecommendation', {
+                method: 'POST',
+                body: JSON.stringify({
+                    searched: `Find cafés with these criteria:
+                        Mood/Vibe: ${mood}
+                        Price Range: ${priceRange}
+                        Location: ${location}
+                        Requirements: ${requirements.join(', ')}`
+                }),
+                headers: {
+                    'content-type': 'application/json'
+                }
+            });
 
-	async function search() {
-		if (loading) return;
-		recommendations = [];
-		searchResponse = '';
-		endStream = false;
-		loading = true;
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
-		let fullSearchCriteria = `Give me a list of 5 ${cinemaType} recommendations ${
-			selectedCategories ? `that fit all of the following categories: ${selectedCategories}` : ''
-		}. ${
-			specificDescriptors
-				? `Make sure it fits the following description as well: ${specificDescriptors}.`
-				: ''
-		} ${
-			selectedCategories || specificDescriptors
-				? `If you do not have 5 recommendations that fit these criteria perfectly, do your best to suggest other ${cinemaType}'s that I might like.`
-				: ''
-		} Please return this response as a numbered list with the ${cinemaType}'s title, followed by a colon, and then a brief description of the ${cinemaType}. There should be a line of whitespace between each item in the list.`;
-		const response = await fetch('/api/getRecommendation', {
-			method: 'POST',
-			body: JSON.stringify({ searched: fullSearchCriteria }),
-			headers: {
-				'content-type': 'application/json'
-			}
-		});
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
 
-		if (response.ok) {
-			try {
-				const data = response.body;
-				if (!data) {
-					return;
-				}
+            while (true) {
+                const { done, value } = await reader!.read();
+                if (done) break;
 
-				const reader = data.getReader();
-				const decoder = new TextDecoder();
+                const text = decoder.decode(value);
+                streamingText += text;
 
-				while (true) {
-					const { value, done } = await reader.read();
-					const chunkValue = decoder.decode(value);
+                // Try to parse the accumulated text into structured recommendations
+                try {
+                    const lines = streamingText.split('\n');
+                    const currentRec = {
+                        name: '',
+                        description: '',
+                        features: '',
+                        bestFor: ''
+                    };
 
-					searchResponse += chunkValue;
+                    lines.forEach(line => {
+                        if (line.startsWith('Name:')) currentRec.name = line.replace('Name:', '').trim();
+                        else if (line.startsWith('Description:')) currentRec.description = line.replace('Description:', '').trim();
+                        else if (line.startsWith('Features:')) currentRec.features = line.replace('Features:', '').trim();
+                        else if (line.startsWith('Best for:')) currentRec.bestFor = line.replace('Best for:', '').trim();
+                    });
 
-					if (done) {
-						endStream = true;
-						break;
-					}
-				}
-			} catch (err) {
-				error = 'Looks like OpenAI timed out :(';
-			}
-		} else {
-			error = await response.text();
-		}
-		loading = false;
-	}
-	function clearForm() {
-		recommendations = [];
-		searchResponse = '';
-		endStream = false;
-		cinemaType = 'tv show';
-		selectedCategories = [];
-		specificDescriptors = '';
-	}
+                    if (currentRec.name && !recommendations.some(r => r.name === currentRec.name)) {
+                        recommendations = [...recommendations, { ...currentRec }];
+                    }
+                } catch (e) {
+                    console.error('Error parsing recommendation:', e);
+                }
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        } finally {
+            loading = false;
+        }
+    }
 </script>
 
-<div>
-	<div class="h-screen w-full bg-cover fixed" style="background-image: url(/background.png)">
-		<div
-			class={`${
-				makeRecommendation ? 'backdrop-blur-md' : ''
-			}  flex flex-col items-center justify-center min-h-screen w-full h-full bg-gradient-to-br from-slate-900/80 to-black/90`}
-		/>
-	</div>
-
-	<div class="absolute inset-0 px-6 flex flex-col h-screen overflor-auto">
-		<Header
-			on:click={() => {
-				makeRecommendation = false;
-			}}
-		/>
-
-		{#if !makeRecommendation}
-			<div
-				in:fade|global
-				class="flex-grow max-w-4xl mx-auto w-full md:pt-20  flex flex-col items-center justify-center"
-			>
-				<Home
-					on:click={() => {
-						makeRecommendation = true;
-					}}
-				/>
-			</div>
-		{:else}
-			<div in:fade|global class="w-full max-w-4xl mx-auto">
-				<div class="w-full mb-8">
-					<Form
-						bind:cinemaType
-						bind:selectedCategories
-						bind:loading
-						bind:specificDescriptors
-						on:click={search}
-					/>
-					{#if recommendations.length > 0 && endStream}
-						<button
-							on:click={clearForm}
-							class="bg-white/20 hover:bg-white/30 mt-4 w-full h-10 text-white font-bold p-3 rounded-full flex items-center justify-center"
-						>
-							Clear Search
-						</button>
-					{/if}
-				</div>
-				<div class="md:pb-20 max-w-4xl mx-auto w-full">
-					{#if loading && !searchResponse && !recommendations}
-						<div class="fontsemibold text-lg text-center mt-8 mb-4">
-							Please be patient as I think. Good things are coming 😎.
-						</div>
-					{/if}
-					{#if error}
-						<div class="fontsemibold text-lg text-center mt-8 text-red-500">
-							Woops! {error}
-						</div>
-					{/if}
-					{#if recommendations}
-						{#each recommendations as recommendation, i (i)}
-							<div>
-								{#if recommendation !== ''}
-									<div class="mb-8">
-										{#if typeof recommendation !== 'string' && recommendation.title}
-											<RecommendationCard {recommendation} />
-										{:else}
-											<div in:fade|global>
-												<LoadingCard incomingStream={recommendation} />
-											</div>
-										{/if}
-									</div>
-								{/if}
-							</div>
-						{/each}
-					{/if}
-				</div>
-			</div>
-		{/if}
-		<Footer />
-	</div>
+<div class="min-h-screen">
+    <Header />
+    <main class="max-w-4xl mx-auto px-4 pb-12">
+        {#if !showForm}
+            <Home on:click={handleShowForm} />
+        {:else}
+            <Form
+                {mood}
+                {priceRange}
+                {location}
+                {requirements}
+                {loading}
+                on:click={handleSubmit}
+            />
+            {#if loading}
+                <div class="mt-8 space-y-4">
+                    <LoadingCard incomingStream={streamingText} />
+                </div>
+            {/if}
+            {#if recommendations.length > 0}
+                <div class="mt-8 space-y-4">
+                    {#each recommendations as recommendation}
+                        <RecommendationCard {recommendation} />
+                    {/each}
+                </div>
+            {/if}
+        {/if}
+    </main>
+    <Footer />
 </div>
