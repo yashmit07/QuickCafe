@@ -10,6 +10,63 @@ QuickCafé is an AI-powered café discovery platform that helps users find the p
 - 💨 Redis-powered caching and rate limiting
 - 🎨 Responsive UI with TailwindCSS
 
+## Project Progress
+
+### Completed ✅
+- Basic project setup from template
+- Core UI components modified for café theme:
+  - Form component for café preferences
+  - Header with café branding
+  - Home page with updated messaging
+  - Footer and GitHub button
+  - Loading and recommendation card components
+- Initial OpenAI GPT integration for recommendations
+- Basic project structure and routing
+
+### In Progress 🚧
+- Development environment setup
+- Testing basic recommendation flow
+- Debugging initial implementation
+
+### To Do 📝
+1. Database Integration
+   - Set up PostgreSQL with PostGIS
+   - Design schema for café data
+   - Implement database queries
+
+2. API Integrations
+   - Integrate Google Places API
+   - Combine Google data with OpenAI analysis
+   - Implement robust error handling
+
+3. Caching Layer
+   - Set up Redis
+   - Implement caching strategy
+   - Add rate limiting with Redis
+
+4. Performance Optimization
+   - Optimize database queries
+   - Implement efficient data streaming
+   - Add loading states and pagination
+
+5. UI/UX Improvements
+   - Add responsive design improvements
+   - Implement error states
+   - Add loading animations
+   - Improve recommendation display
+
+6. Testing & Documentation
+   - Add unit tests
+   - Write integration tests
+   - Complete documentation
+   - Add contribution guidelines
+
+7. Deployment
+   - Set up production database
+   - Configure Redis in production
+   - Set up monitoring
+   - Deploy to Vercel
+
 ## Tech Stack
 
 - **Frontend**: SvelteKit
@@ -57,9 +114,24 @@ npm run db:migrate
 
 ## Deployment
 
-Deploy your own instance of QuickCafé with Vercel:
+To deploy QuickCafé, you'll need:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2F[YOUR-USERNAME]%2Fquickcafe)
+1. A Vercel account for the main application
+2. A PostgreSQL database with PostGIS extension
+3. A Redis instance for caching
+4. Valid API keys for OpenAI and Google Places
+
+### Deployment Steps:
+1. Set up your database and Redis instances
+2. Deploy to Vercel with the following environment variables:
+```
+OPENAI_API_KEY=your_openai_key
+GOOGLE_PLACES_API_KEY=your_google_key
+POSTGRES_URL=your_postgres_connection_string
+REDIS_URL=your_redis_url
+```
+
+For detailed deployment instructions, check out our deployment guide (coming soon).
 
 ## Contributing
 
