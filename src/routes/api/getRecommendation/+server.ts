@@ -4,82 +4,110 @@ import { OPENAI_API_KEY, GOOGLE_PLACES_API_KEY } from '$env/static/private'
 import type { RequestHandler } from './$types'
 import type { CafeRequest } from '$lib/types/database'
 import { AnalysisService } from '$lib/services/analysis'
+import { RecommendationService } from '$lib/services/recommendations'
+import { PlacesService } from '$lib/services/places'
+import { CacheService } from '$lib/services/cache'
 import { supabase } from '$lib/db/supabase'
 
 const analysisService = new AnalysisService()
+const recommendationService = new RecommendationService()
+const placesService = new PlacesService()
+const cacheService = new CacheService()
 
 export const POST: RequestHandler = async ({ request }) => {
     try {
         const { mood, priceRange, location, requirements } = await request.json() as CafeRequest
 
-        // 1. Geocode the location
-        const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${GOOGLE_PLACES_API_KEY}`
-        const geocodingRes = await fetch(geocodingUrl)
-        const geocodingData = await geocodingRes.json()
-        const { lat, lng } = geocodingData.results[0].geometry.location
+        // 1. Check location cache first
+        let cachedCafeIds = await cacheService.getLocationCache(location)
+        let cafes
 
-        // 2. Search for cafes
-        const { data: cafes, error } = await supabase.rpc('search_nearby_cafes', {
-            search_lat: lat,
-            search_lng: lng,
-            radius_meters: 5000,
-            price: priceRange
-        })
-
-        if (error) throw error
-
-        // 3. Get or perform analysis for each cafe
-        for (const cafe of cafes) {
-            const { data: existing } = await supabase
-                .from('cafe_vibes')
+        if (cachedCafeIds) {
+            // Use cached cafe IDs
+            const { data, error } = await supabase
+                .from('cafes')
                 .select('*')
-                .eq('cafe_id', cafe.id)
-                .single()
+                .in('id', cachedCafeIds)
+            
+            if (error) throw error
+            cafes = data
+        } else {
+            // 2. Geocode and search for new cafes
+            const { lat, lng } = await placesService.geocodeLocation(location)
+            
+            // 3. Search for nearby cafes
+            const nearbyCafes = await placesService.searchNearbyCafes(lat, lng, 5000)
+            
+            // 4. Store cafes and cache location
+            const { data: storedCafes, error } = await supabase
+                .from('cafes')
+                .upsert(nearbyCafes, { 
+                    onConflict: 'google_place_id',
+                    returning: true 
+                })
+            
+            if (error) throw error
+            cafes = storedCafes
 
-            if (!existing) {
+            // Cache the location results
+            await cacheService.cacheLocationResults(
+                location, 
+                cafes.map(c => c.id)
+            )
+        }
+
+        // 5. Get or perform analysis for each cafe
+        for (const cafe of cafes) {
+            if (!(await cacheService.hasRecentAnalysis(cafe.id))) {
                 const analysis = await analysisService.analyzeReviews(cafe)
                 if (analysis) {
-                    // Store results in database
-                    await Promise.all([
-                        supabase.from('cafe_amenities').insert(
-                            Object.entries(analysis.amenities)
-                                .filter(([_, score]) => score > 0.5)
-                                .map(([amenity, score]) => ({
-                                    cafe_id: cafe.id,
-                                    amenity,
-                                    confidence_score: score
-                                }))
-                        ),
-                        supabase.from('cafe_vibes').insert(
-                            Object.entries(analysis.vibes)
-                                .filter(([_, score]) => score > 0.5)
-                                .map(([vibe, score]) => ({
-                                    cafe_id: cafe.id,
-                                    vibe_category: vibe,
-                                    confidence_score: score
-                                }))
-                        )
-                    ])
+                    // Store results using atomic update
+                    await supabase.rpc('update_cafe_analysis', {
+                        p_cafe_id: cafe.id,
+                        p_timestamp: new Date().toISOString(),
+                        p_vibes: Object.entries(analysis.vibes)
+                            .filter(([_, score]) => score > 0.5)
+                            .map(([vibe, score]) => ({
+                                vibe_category: vibe,
+                                confidence_score: score
+                            })),
+                        p_amenities: Object.entries(analysis.amenities)
+                            .filter(([_, score]) => score > 0.5)
+                            .map(([amenity, score]) => ({
+                                amenity,
+                                confidence_score: score
+                            }))
+                    })
                 }
             }
         }
 
-        // 4. Create prompt using analyzed data
-        const prompt = `Act as a knowledgeable local café expert. I have analyzed ${cafes.length} cafes in ${location} and will provide recommendations based on the following preferences:
+        // 6. Get scored and ranked recommendations
+        const rankedCafes = await recommendationService.getRecommendations(
+            lat,
+            lng,
+            { mood, priceRange, location, requirements },
+            5 // Get top 5 recommendations
+        )
+
+        // 7. Create prompt using ranked data
+        const prompt = `Act as a knowledgeable local café expert. I have analyzed and ranked ${rankedCafes.length} best matching cafes in ${location} based on:
 
         Desired Vibe: ${mood}
         Price Range: ${priceRange}
         Special Requirements: ${requirements.join(', ')}
 
-        Using the verified data I have, here are the best matches. For each café, provide:
-        1. Name
+        Here are the best matches in order of relevance. For each café, provide:
+        1. Name and key details (price, distance)
         2. Brief description of atmosphere and offerings
         3. Notable features that match the requirements
         4. Best suited for (e.g., working, meetings, casual hangout)
 
-        Format each recommendation in a clean, easy-to-read way.`
+        Format each recommendation in a clean, easy-to-read way.
 
-        // 5. Stream recommendations using your existing code
+        Cafe data: ${JSON.stringify(rankedCafes, null, 2)}`
+
+        // 8. Stream recommendations
         const payload = {
             model: 'gpt-3.5-turbo',
             messages: [{ role: 'user', content: prompt }],
@@ -97,14 +125,16 @@ export const POST: RequestHandler = async ({ request }) => {
 
     } catch (error) {
         console.error('Error:', error)
-        return new Response(JSON.stringify({ error: 'Failed to get recommendations' }), {
+        return new Response(JSON.stringify({ 
+            error: 'Failed to get recommendations',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        }), {
             status: 500,
             headers: { 'Content-Type': 'application/json' }
         })
     }
 }
 
-// Your existing OpenAIStream function remains unchanged
 async function OpenAIStream(payload: any) {
     const encoder = new TextEncoder()
     const decoder = new TextDecoder()
