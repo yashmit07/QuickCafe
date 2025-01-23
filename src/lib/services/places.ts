@@ -1,6 +1,6 @@
 // src/lib/services/places.ts
 import type { Cafe } from '$lib/types/database'
-import { VITE_GOOGLE_PLACES_API_KEY } from '$env/static/private'
+import { GOOGLE_PLACES_API_KEY } from '$env/static/private'
 import { supabase } from '$lib/db/supabase'
 
 type PlaceType = 'cafe' | 'restaurant';
@@ -55,11 +55,11 @@ export class PlacesService {
     private readonly RETRY_DELAY = 2000; // 2 seconds
 
     constructor() {
-        if (!VITE_GOOGLE_PLACES_API_KEY) {
+        if (!GOOGLE_PLACES_API_KEY) {
             console.error('Google Places API key is not set!');
             throw new Error('Google Places API key is required');
         }
-        console.log('Places Service initialized with API key:', VITE_GOOGLE_PLACES_API_KEY.substring(0, 8) + '...');
+        console.log('Places Service initialized with API key:', GOOGLE_PLACES_API_KEY.substring(0, 8) + '...');
     }
 
     private async retryableRequest(
@@ -107,8 +107,8 @@ export class PlacesService {
     async geocodeLocation(location: string): Promise<{ lat: number; lng: number }> {
         try {
             console.log('Geocoding location:', location);
-            const url = `${this.GEOCODING_API_BASE}/json?address=${encodeURIComponent(location)}&key=${VITE_GOOGLE_PLACES_API_KEY}`;
-            console.log('Geocoding URL:', url.replace(VITE_GOOGLE_PLACES_API_KEY, 'REDACTED'));
+            const url = `${this.GEOCODING_API_BASE}/json?address=${encodeURIComponent(location)}&key=${GOOGLE_PLACES_API_KEY}`;
+            console.log('Geocoding URL:', url.replace(GOOGLE_PLACES_API_KEY, 'REDACTED'));
             
             const response = await this.retryableRequest(url);
             console.log('Geocoding response status:', response.status);
@@ -165,7 +165,7 @@ export class PlacesService {
         }
 
         const params = new URLSearchParams({
-            key: VITE_GOOGLE_PLACES_API_KEY,
+            key: GOOGLE_PLACES_API_KEY,
             location: `${lat},${lng}`,
             type: 'cafe',
             radius: radius.toString(),
@@ -189,7 +189,7 @@ export class PlacesService {
             keyword: 'coffee cafe bakery',
             minprice: minPrice?.toString(),
             maxprice: maxPrice?.toString(),
-            url: url.replace(VITE_GOOGLE_PLACES_API_KEY, 'REDACTED')
+            url: url.replace(GOOGLE_PLACES_API_KEY, 'REDACTED')
         });
 
         try {
@@ -299,7 +299,7 @@ export class PlacesService {
      */
     async getPlaceDetails(placeId: string): Promise<any> {
         const params: Record<string, string> = {
-            key: VITE_GOOGLE_PLACES_API_KEY,
+            key: GOOGLE_PLACES_API_KEY,
             place_id: placeId,
             fields: this.PLACE_DETAILS_FIELDS.join(',')
         };

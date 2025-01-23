@@ -1,6 +1,6 @@
 // src/routes/api/getRecommendation/+server.ts
 import { createParser } from 'eventsource-parser'
-import { VITE_OPENAI_API_KEY } from '$env/static/private'
+import { OPENAI_API_KEY } from '$env/static/private'
 import type { RequestHandler } from './$types'
 import type { Cafe, CafeRequest, VibeCategory, AmenityType } from '$lib/types/database'
 import { AnalysisService } from '$lib/services/analysis'
@@ -310,7 +310,7 @@ async function OpenAIStream(payload: OpenAIPayload): Promise<ReadableStream> {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${VITE_OPENAI_API_KEY}`
+            Authorization: `Bearer ${OPENAI_API_KEY}`
         },
         method: 'POST',
         body: JSON.stringify(payload)

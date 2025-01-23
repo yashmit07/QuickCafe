@@ -1,4 +1,4 @@
-import { VITE_OPENAI_API_KEY } from '$env/static/private'
+import { OPENAI_API_KEY } from '$env/static/private'
 import type { Cafe } from '$lib/types/database'
 import { supabase } from '$lib/db/supabase'
 
@@ -98,7 +98,7 @@ export class AnalysisService {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${VITE_OPENAI_API_KEY}`
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`
                     },
                     body: JSON.stringify({
                         model: "gpt-3.5-turbo",

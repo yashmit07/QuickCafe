@@ -1,142 +1,325 @@
 # QuickCafé
 
-QuickCafé is an AI-powered café discovery platform that helps users find the perfect coffee spot based on their preferences. Utilizing OpenAI's GPT API for intelligent recommendations, Google Places API for real café data, and PostGIS for location-based searching, it delivers personalized café suggestions with atmosphere analysis.
+QuickCafé is an AI-powered café discovery platform that helps users find the perfect coffee spot based on their preferences. By combining OpenAI's GPT API for intelligent analysis, Google Places API for real café data, and PostGIS for location-based searching, it delivers personalized café suggestions with detailed atmosphere and amenity analysis.
 
 ## Features
 
-- 🎯 Smart café matching based on atmosphere preferences
-- 📍 Location-aware recommendations using PostGIS
-- 🏃‍♂️ Real-time data streaming with server-sent events
-- 💨 Redis-powered caching and rate limiting
-- 🎨 Responsive UI with TailwindCSS
+- 🎯 Intelligent café matching based on:
+  - Mood preferences (cozy, modern, quiet, lively, artistic, traditional, industrial)
+  - Required amenities (WiFi, outdoor seating, power outlets, etc.)
+  - Price range preferences ($, $$, $$$)
+  - Location proximity with configurable radius
+- 📍 Location-aware recommendations using:
+  - Google Geocoding API for address to coordinates conversion
+  - PostGIS for efficient geographical queries
+  - Location caching to minimize API calls
+- 🤖 AI-powered analysis using OpenAI GPT-3.5:
+  - Review analysis for vibe detection
+  - Amenity identification from reviews
+  - Confidence scoring for reliable results
+- 🔄 Real-time data streaming with server-sent events
+- 🎨 Modern, responsive UI with TailwindCSS
+- ⚡ High-performance database queries with PostGIS spatial indexing
+- 🧠 Smart scoring system for café ranking based on multiple factors
 
-## Project Progress
+## System Architecture
 
-### Completed ✅
-- Basic project setup from template
-- Core UI components modified for café theme:
-  - Form component for café preferences
-  - Header with café branding
-  - Home page with updated messaging
-  - Footer and GitHub button
-  - Loading and recommendation card components
-- Initial OpenAI GPT integration for recommendations
-- Basic project structure and routing
-
-### In Progress 🚧
-- Development environment setup
-- Testing basic recommendation flow
-- Debugging initial implementation
-
-### To Do 📝
-1. Database Integration
-   - Set up PostgreSQL with PostGIS
-   - Design schema for café data
-   - Implement database queries
-
-2. API Integrations
-   - Integrate Google Places API
-   - Combine Google data with OpenAI analysis
-   - Implement robust error handling
-
-3. Caching Layer
-   - Set up Redis
-   - Implement caching strategy
-   - Add rate limiting with Redis
-
-4. Performance Optimization
-   - Optimize database queries
-   - Implement efficient data streaming
-   - Add loading states and pagination
-
-5. UI/UX Improvements
-   - Add responsive design improvements
-   - Implement error states
-   - Add loading animations
-   - Improve recommendation display
-
-6. Testing & Documentation
-   - Add unit tests
-   - Write integration tests
-   - Complete documentation
-   - Add contribution guidelines
-
-7. Deployment
-   - Set up production database
-   - Configure Redis in production
-   - Set up monitoring
-   - Deploy to Vercel
-
-## Tech Stack
-
-- **Frontend**: SvelteKit
-- **Database**: PostgreSQL with PostGIS extension
-- **Caching**: Redis
-- **APIs**: OpenAI GPT-3.5, Google Places API
-- **Styling**: TailwindCSS
-- **Deployment**: Vercel Edge Functions
-
-## How it works
-
-The platform combines multiple technologies to provide intelligent café recommendations:
-1. Uses Google Places API to fetch real café data
-2. Analyzes reviews and descriptions using OpenAI GPT
-3. Matches user preferences with café attributes
-4. Streams recommendations in real-time
-5. Caches results with Redis for improved performance
-
-## Running Locally
-
-1. Clone the repository
-2. Create a `.env` file with the following keys:
-```env
-OPENAI_API_KEY=your_openai_key
-GOOGLE_PLACES_API_KEY=your_google_key
-POSTGRES_URL=your_postgres_connection_string
-REDIS_URL=your_redis_url
+```mermaid
+graph TD
+    A[User Interface] -->|Submit Preferences| B[API Layer]
+    B -->|Geocode Location| C[Google Places API]
+    B -->|Fetch Cafes| D[PostGIS Database]
+    B -->|Analyze Reviews| E[OpenAI GPT]
+    D -->|Return Nearby Cafes| B
+    E -->|Return Analysis| B
+    B -->|Stream Results| A
+    
+    subgraph Database
+    D --> F[Cafes Table]
+    D --> G[Cafe Vibes Table]
+    D --> H[Cafe Amenities Table]
+    D --> I[Location Cache Table]
+    end
 ```
 
-3. Install dependencies and run the development server:
+### Database Schema
+
+```sql
+-- Cafes Table
+CREATE TABLE cafes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    google_place_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    location GEOGRAPHY(POINT) NOT NULL,
+    address TEXT NOT NULL,
+    price_level price_level,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Cafe Vibes Table
+CREATE TABLE cafe_vibes (
+    cafe_id UUID REFERENCES cafes(id),
+    vibe_categories vibe_category[] NOT NULL,
+    confidence_scores FLOAT[] NOT NULL,
+    last_analyzed TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (cafe_id)
+);
+
+-- Cafe Amenities Table
+CREATE TABLE cafe_amenities (
+    cafe_id UUID REFERENCES cafes(id),
+    amenity_types amenity_type[] NOT NULL,
+    confidence_scores FLOAT[] NOT NULL,
+    last_analyzed TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (cafe_id)
+);
+
+-- Location Cache Table
+CREATE TABLE location_cache (
+    address TEXT PRIMARY KEY,
+    coordinates GEOGRAPHY(POINT) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### Recommendation System
+
+The recommendation engine uses a sophisticated scoring algorithm that considers:
+
+1. **Vibe Matching (30% weight)**
+   - Analyzes café reviews using OpenAI GPT
+   - Extracts and scores vibe categories
+   - Only stores high-confidence (>0.4) assessments
+   - Example vibes: cozy (0.5), modern (0.7), quiet (0.4)
+
+2. **Amenity Scoring (30% weight)**
+   - Identifies available amenities from reviews
+   - Assigns confidence scores
+   - Stores only high-confidence (>0.5) amenities
+   - Example amenities: wifi (0.8), outdoor_seating (0.6), food_menu (0.9)
+
+3. **Price Compatibility (20% weight)**
+   - Flexible price range matching
+   - Includes cafes within one price level of target
+   - Scoring:
+     - Exact match: 1.0
+     - One level difference: 0.5
+     - Two or more levels: 0.0
+
+4. **Distance Calculation (20% weight)**
+   - Uses PostGIS for efficient distance calculations
+   - Prioritizes closer locations
+   - Score = 1 - (distance / max_distance)
+   - Default search radius: 5000 meters
+
+### Geocoding System
+
+The application implements a robust geocoding system:
+
+1. **Location Caching**
+   - Caches geocoded addresses to minimize API calls
+   - Stores coordinates in PostGIS geography type
+   - Automatic cache cleanup for old entries
+
+2. **Google Geocoding Integration**
+   - Converts user-input addresses to coordinates
+   - Handles various address formats
+   - Error handling for invalid addresses
+
+3. **Reverse Geocoding**
+   - Converts coordinates to readable addresses
+   - Used for displaying café locations
+   - Cached to minimize API usage
+
+## API Integrations
+
+### OpenAI GPT
+- Model: GPT-3.5-turbo
+- Purpose: Review analysis and scoring
+- Configuration:
+  - Max tokens: 300
+  - Temperature: 0.7
+  - Response format: Structured JSON
+- Example response:
+```json
+{
+  "vibe_scores": {
+    "cozy": 0.5,
+    "modern": 0.3,
+    "quiet": 0.4
+  },
+  "amenity_scores": {
+    "wifi": 0.8,
+    "outdoor_seating": 0.6,
+    "food_menu": 0.9
+  }
+}
+```
+
+### Google Places API
+- Services used:
+  - Places Search API
+  - Place Details API
+  - Geocoding API
+- Features:
+  - Nearby café search
+  - Review retrieval
+  - Address geocoding
+  - Place details fetching
+
+## Setup and Installation
+
+### Prerequisites
+- Node.js 16+
+- PostgreSQL 13+ with PostGIS extension
+- API keys for:
+  - OpenAI GPT
+  - Google Places API
+  - Supabase (for database)
+
+### Environment Variables
+
+⚠️ **Security Notice**: Never commit or share your actual API keys or sensitive credentials. Always use environment variables for sensitive data.
+
+1. Create a `.env` file in the root directory
+2. Add the following variables with your own values:
+```env
+# Supabase Configuration
+VITE_SUPABASE_URL=https://your-project.supabase.co        # Your Supabase project URL
+VITE_SUPABASE_ANON_KEY=your-anon-key                      # Your Supabase anon key
+
+# API Keys (Keep these secret!)
+VITE_GOOGLE_PLACES_API_KEY=your-google-places-key         # Get from Google Cloud Console
+VITE_OPENAI_API_KEY=your-openai-key                       # Get from OpenAI dashboard
+```
+
+#### Security Best Practices:
+- Never commit `.env` file to version control
+- Add `.env` to your `.gitignore` file
+- Use different API keys for development and production
+- Regularly rotate your API keys
+- Restrict API key permissions to only what's needed
+- For production, use secure environment variable management through your hosting platform
+
+#### Getting the API Keys:
+1. **Supabase**:
+   - Create a project at [supabase.com](https://supabase.com)
+   - Find credentials in Project Settings > API
+
+2. **Google Places API**:
+   - Create a project in [Google Cloud Console](https://console.cloud.google.com)
+   - Enable Places API and create credentials
+   - Add restrictions to the API key (HTTP referrers, IP addresses)
+
+3. **OpenAI API**:
+   - Sign up at [OpenAI Platform](https://platform.openai.com)
+   - Create an API key in the API Keys section
+   - Set usage limits to control costs
+
+### Local Development
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/QuickCafe.git
+cd QuickCafe
+```
+
+2. Install dependencies:
 ```bash
 npm install
-npm run dev
 ```
 
-The application will be available at http://localhost:5173.
-
-## Database Setup
-
-1. Ensure PostgreSQL is installed with PostGIS extension
-2. Run the database migrations:
+3. Set up the database:
 ```bash
+# Run migrations
 npm run db:migrate
 ```
 
-## Deployment
-
-To deploy QuickCafé, you'll need:
-
-1. A Vercel account for the main application
-2. A PostgreSQL database with PostGIS extension
-3. A Redis instance for caching
-4. Valid API keys for OpenAI and Google Places
-
-### Deployment Steps:
-1. Set up your database and Redis instances
-2. Deploy to Vercel with the following environment variables:
-```
-OPENAI_API_KEY=your_openai_key
-GOOGLE_PLACES_API_KEY=your_google_key
-POSTGRES_URL=your_postgres_connection_string
-REDIS_URL=your_redis_url
+4. Start the development server:
+```bash
+npm run dev
 ```
 
-For detailed deployment instructions, check out our deployment guide (coming soon).
+## Database Migrations
+
+The project includes SQL migrations for:
+1. Creating required extensions:
+   - uuid-ossp for UUID generation
+   - postgis for geographical queries
+2. Setting up ENUM types:
+   - price_level ('$', '$$', '$$$')
+   - vibe_category (cozy, modern, quiet, etc.)
+   - amenity_type (wifi, outdoor_seating, etc.)
+3. Creating tables with proper indexes:
+   - Spatial index on café locations
+   - B-tree indexes on foreign keys
+4. Defining functions:
+   - search_nearby_cafes(lat, lng, radius, price)
+   - update_cafe_analysis(id, vibes, amenities)
+   - check_extensions()
+
+## Testing
+
+The project includes comprehensive tests:
+- Unit tests for core services
+- Integration tests for API endpoints
+- Mock implementations for:
+  - OpenAI API responses
+  - Google Places API
+  - Geocoding services
+- Test coverage for:
+  - Recommendation logic
+  - Score calculation
+  - Data processing
+  - Error handling
+
+Run tests with:
+```bash
+npm test
+```
+
+## Performance Considerations
+
+1. **Database Optimization**
+   - PostGIS spatial indexes for location queries
+   - Efficient array storage for scores
+   - Optimized SQL functions
+   - Proper indexing on frequently queried columns
+
+2. **API Usage**
+   - Minimal token usage in OpenAI calls
+   - Selective review analysis (max 3 reviews, 150 chars each)
+   - Efficient Google Places API usage
+   - Request caching where appropriate
+
+3. **Caching Strategy**
+   - Location caching for repeated searches
+   - Analysis results caching with 24-hour expiration
+   - High-confidence score storage
+   - Automatic cache cleanup
+
+4. **Query Optimization**
+   - Efficient PostGIS queries
+   - Proper use of indexes
+   - Optimized joins
+   - Result limiting
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
 MIT
+
+## Acknowledgments
+
+- OpenAI for GPT API
+- Google for Places API
+- PostGIS community
+- SvelteKit team
+- Supabase team
