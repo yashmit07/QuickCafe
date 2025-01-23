@@ -180,8 +180,6 @@ The application implements a robust geocoding system:
 
 ### Environment Variables
 
-⚠️ **Security Notice**: Never commit or share your actual API keys or sensitive credentials. Always use environment variables for sensitive data.
-
 1. Create a `.env` file in the root directory
 2. Add the following variables with your own values:
 ```env
@@ -193,14 +191,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key                      # Your Supabase anon k
 VITE_GOOGLE_PLACES_API_KEY=your-google-places-key         # Get from Google Cloud Console
 VITE_OPENAI_API_KEY=your-openai-key                       # Get from OpenAI dashboard
 ```
-
-#### Security Best Practices:
-- Never commit `.env` file to version control
-- Add `.env` to your `.gitignore` file
-- Use different API keys for development and production
-- Regularly rotate your API keys
-- Restrict API key permissions to only what's needed
-- For production, use secure environment variable management through your hosting platform
 
 #### Getting the API Keys:
 1. **Supabase**:
