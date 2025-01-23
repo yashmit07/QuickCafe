@@ -1,4 +1,4 @@
-export type PriceLevel = '$' | '$$' | '$$$'
+export type PriceLevel = '$' | '$$' | '$$$' | null;
 
 export type VibeCategory = 
     | 'cozy' | 'modern' | 'quiet' | 'lively' 

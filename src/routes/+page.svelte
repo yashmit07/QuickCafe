@@ -33,8 +33,11 @@
     loading = true;
     incomingStream = '';
     recommendations = [];
+    let errorMessage = '';
 
     try {
+      console.log('Submitting form with:', { mood, priceRange, location, requirements });
+      
       const response = await fetch('/api/getRecommendation', {
         method: 'POST',
         headers: {
@@ -49,7 +52,9 @@
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get recommendations');
+        const errorData = await response.json();
+        console.error('API Error:', errorData);
+        throw new Error(errorData.error || 'Failed to get recommendations');
       }
 
       const reader = response.body?.getReader();
@@ -80,8 +85,14 @@
 
     } catch (error) {
       console.error('Error:', error);
+      errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
     } finally {
       loading = false;
+    }
+
+    if (errorMessage) {
+      // Show error message to user
+      alert(errorMessage);
     }
   }
 </script>
