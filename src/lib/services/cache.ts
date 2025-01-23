@@ -22,12 +22,13 @@ export class CacheService {
     /**
      * Check if we have cached results for a location
      */
-    async getLocationCache(searchLocation: string): Promise<string[] | null> {
+    async getLocationCache(searchLocation: string, priceRange?: string, radius: number = 5000): Promise<string[] | null> {
         try {
+            const cacheKey = `${searchLocation}:${priceRange || 'any'}:${radius}`;
             const { data, error } = await supabase
                 .from('location_cache')
                 .select('cafe_ids, last_updated')
-                .eq('search_location', searchLocation)
+                .eq('search_location', cacheKey)
                 .single();
 
             if (error || !data) {
@@ -36,7 +37,7 @@ export class CacheService {
 
             const cacheAge = Date.now() - new Date(data.last_updated).getTime();
             if (cacheAge > this.LOCATION_CACHE_DURATION) {
-                await this.invalidateLocationCache(searchLocation);
+                await this.invalidateLocationCache(cacheKey);
                 return null;
             }
 
@@ -50,12 +51,13 @@ export class CacheService {
     /**
      * Store location search results in cache
      */
-    async cacheLocationResults(searchLocation: string, cafeIds: string[]): Promise<void> {
+    async cacheLocationResults(searchLocation: string, cafeIds: string[], priceRange?: string, radius: number = 5000): Promise<void> {
         try {
+            const cacheKey = `${searchLocation}:${priceRange || 'any'}:${radius}`;
             const { error } = await supabase
                 .from('location_cache')
                 .upsert({
-                    search_location: searchLocation,
+                    search_location: cacheKey,
                     cafe_ids: cafeIds,
                     last_updated: new Date().toISOString()
                 });

@@ -60,34 +60,38 @@ graph TD
     end
 
     %% Frontend Flow
-    Form -->|Submit Search| Server
-    Server -->|Stream Response| Stream
-    Stream -->|Update UI| Results
+    Form -->|1. Submit Search| Server
 
     %% Main Processing Flow
-    Server -->|1. Verify Setup| PG
-    Server -->|2. Get/Cache Location| Cache
-    Cache -->|3. Check Cache| Locations
-    Server -->|4. Search Places| Places
-    Places -->|Geocode| GG
-    Places -->|Search Cafes| GP
-    
+    Server -->|2. Verify DB Setup| PG
+    Server -->|3. Check Location Cache| Cache
+    Cache -->|4. Query Cache| Locations
+
+    %% Cache Miss Flow
+    Server -->|5a. If Cache Miss: Geocode| Places
+    Places -->|5b. Get Coordinates| GG
+    Places -->|6a. Search Cafes| GP
+    Places -->|6b. Store Results| Cafes
+    Server -->|6c. Update Cache| Locations
+
     %% Analysis Flow
-    Server -->|5. Analyze Reviews| Analysis
-    Analysis -->|Process Reviews| OAI
-    Analysis -->|Store Results| Vibes
-    Analysis -->|Store Results| Amenities
-    
+    Server -->|7a. For Each Cafe| Analysis
+    Analysis -->|7b. Check Cache| Vibes
+    Analysis -->|7c. Check Cache| Amenities
+    Analysis -->|7d. If No Cache: Analyze| OAI
+    Analysis -->|7e. Store Results| Vibes
+    Analysis -->|7f. Store Results| Amenities
+
     %% Recommendation Flow
-    Server -->|6. Get Recommendations| Recommender
-    Recommender -->|Fetch Data| Cafes
-    Recommender -->|Get Scores| Vibes
-    Recommender -->|Get Scores| Amenities
+    Server -->|8a. Get Recommendations| Recommender
+    Recommender -->|8b. Fetch Cafes| Cafes
+    Recommender -->|8c. Get Scores| Vibes
+    Recommender -->|8d. Get Scores| Amenities
     
-    %% Cache Updates
-    Cache -->|Store Results| Locations
-    Cache -->|Store Analysis| Vibes
-    Cache -->|Store Analysis| Amenities
+    %% Response Flow
+    Server -->|9a. Generate Description| OAI
+    Server -->|9b. Stream Response| Stream
+    Stream -->|10. Update UI| Results
 
     style UI fill:#f9f,stroke:#333,stroke-width:2px
     style PG fill:#b5e853,stroke:#333,stroke-width:2px
@@ -209,17 +213,20 @@ graph TD
        participant G as Google APIs
        participant D as Database
        
-       U->>S: Submit Search
-       S->>C: Check Location Cache
+       U->>S: 1. Submit Search
+       S->>C: 2. Check Location Cache
+       C->>D: 3. Query Cache Table
+       
        alt Cache Hit
-           C->>D: Get Cached Cafes
+           D-->>C: 4a. Return Cached Cafe IDs
+           C-->>S: 4b. Return Cached Results
        else Cache Miss
-           S->>G: Geocode Location
-           G->>S: Return Coordinates
-           S->>G: Search Nearby Cafes
-           G->>S: Return Cafe List
-           S->>D: Store Cafes
-           S->>C: Cache Location
+           S->>G: 5a. Geocode Location
+           G-->>S: 5b. Return Coordinates
+           S->>G: 6a. Search Nearby Cafes
+           G-->>S: 6b. Return Cafe List
+           S->>D: 7a. Store Cafes
+           S->>C: 7b. Update Location Cache
        end
    ```
 
@@ -228,20 +235,24 @@ graph TD
    sequenceDiagram
        participant S as Server
        participant A as Analysis Service
+       participant C as Cache
        participant O as OpenAI
        participant D as Database
        
-       S->>A: Request Analysis
-       A->>D: Check Cached Analysis
+       S->>A: 1. Request Analysis
+       A->>C: 2. Check Analysis Cache
+       C->>D: 3. Query Vibes/Amenities
+       
        alt Cache Hit
-           D->>A: Return Cached Results
+           D-->>C: 4a. Return Cached Analysis
+           C-->>A: 4b. Return Results
        else Cache Miss
-           A->>O: Process Reviews
-           O->>A: Return Scores
-           A->>D: Store High Confidence
-           A->>D: Update Cache
+           A->>O: 5a. Process Reviews
+           O-->>A: 5b. Return Scores
+           A->>D: 6a. Store High Confidence
+           A->>C: 6b. Update Cache
        end
-       A->>S: Return Analysis
+       A-->>S: 7. Return Analysis
    ```
 
 3. **Recommendation Flow**:
@@ -251,15 +262,17 @@ graph TD
        participant R as Recommender
        participant D as Database
        participant O as OpenAI
+       participant U as User
        
-       S->>R: Get Recommendations
-       R->>D: Fetch Cafe Data
-       R->>D: Get Vibe Scores
-       R->>D: Get Amenity Scores
-       R->>R: Calculate Rankings
-       R->>O: Generate Descriptions
-       O->>R: Return Descriptions
-       R->>S: Stream Results
+       S->>R: 1. Get Recommendations
+       R->>D: 2a. Fetch Cafe Data
+       R->>D: 2b. Get Vibe Scores
+       R->>D: 2c. Get Amenity Scores
+       R->>R: 3. Calculate Rankings
+       R-->>S: 4. Return Top Matches
+       S->>O: 5a. Generate Descriptions
+       O-->>S: 5b. Return Text
+       S->>U: 6. Stream Results
    ```
 
 ### Performance Optimizations
@@ -336,8 +349,6 @@ graph TD
 
 ### Environment Variables
 
-⚠️ **Security Notice**: Never commit or share your actual API keys or sensitive credentials. Always use environment variables for sensitive data.
-
 1. Create a `.env` file in the root directory
 2. Add the following variables with your own values:
 ```env
@@ -349,14 +360,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-key                      # Your Supabase anon k
 VITE_GOOGLE_PLACES_API_KEY=your-google-places-key         # Get from Google Cloud Console
 VITE_OPENAI_API_KEY=your-openai-key                       # Get from OpenAI dashboard
 ```
-
-#### Security Best Practices:
-- Never commit `.env` file to version control
-- Add `.env` to your `.gitignore` file
-- Use different API keys for development and production
-- Regularly rotate your API keys
-- Restrict API key permissions to only what's needed
-- For production, use secure environment variable management through your hosting platform
 
 #### Getting the API Keys:
 1. **Supabase**:

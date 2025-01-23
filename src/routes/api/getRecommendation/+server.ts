@@ -116,29 +116,23 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // 1. Check location cache first
         try {
-            console.log('Checking location cache for:', location);
-            const cachedCafeIds = await cacheService.getLocationCache(location)
-
-            if (cachedCafeIds) {
-                console.log('Cache hit for location:', location);
-                // Use cached cafe IDs
-                const { data, error } = await supabase
+            console.log('Checking location cache...');
+            const cachedCafeIds = await cacheService.getLocationCache(location, priceRange);
+            if (cachedCafeIds?.length) {
+                console.log('Cache hit! Getting cafes from cache...');
+                const { data: cachedCafes, error: cacheError } = await supabase
                     .from('cafes')
                     .select('*')
-                    .in('id', cachedCafeIds)
-                
-                if (error) {
-                    console.error('Error fetching cafes from cache:', error);
-                    throw error;
+                    .in('id', cachedCafeIds);
+
+                if (cacheError) {
+                    console.error('Error getting cafes from cache:', cacheError);
+                    throw cacheError;
                 }
 
-                if (!data?.length) {
-                    console.log('Cache invalid, proceeding with new search');
-                    // Cache is invalid - proceed with new search
-                    await cacheService.invalidateLocationCache(location)
-                } else {
-                    cafes = data;
-                    console.log(`Found ${cafes.length} cafes in cache`);
+                if (cachedCafes?.length) {
+                    cafes = cachedCafes;
+                    console.log(`Retrieved ${cafes.length} cafes from cache`);
                 }
             } else {
                 console.log('Cache miss for location:', location);
@@ -198,7 +192,8 @@ export const POST: RequestHandler = async ({ request }) => {
                     console.log('Caching location results...');
                     await cacheService.cacheLocationResults(
                         location, 
-                        cafes.map(cafe => cafe.id)
+                        cafes.map(cafe => cafe.id),
+                        priceRange
                     )
                     console.log('Location results cached');
                 } catch (error) {
