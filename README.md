@@ -24,113 +24,269 @@ QuickCafé is an AI-powered café discovery platform that helps users find the p
 
 ## System Architecture
 
+### High-Level Overview
+
 ```mermaid
 graph TD
-    A[User Interface] -->|Submit Preferences| B[API Layer]
-    B -->|Geocode Location| C[Google Places API]
-    B -->|Fetch Cafes| D[PostGIS Database]
-    B -->|Analyze Reviews| E[OpenAI GPT]
-    D -->|Return Nearby Cafes| B
-    E -->|Return Analysis| B
-    B -->|Stream Results| A
-    
-    subgraph Database
-    D --> F[Cafes Table]
-    D --> G[Cafe Vibes Table]
-    D --> H[Cafe Amenities Table]
-    D --> I[Location Cache Table]
+    subgraph "Frontend Layer"
+        UI[User Interface]
+        Form[Search Form]
+        Results[Results Display]
+        Stream[Stream Handler]
     end
+
+    subgraph "API Layer"
+        Server[SvelteKit Server]
+        Cache[Cache Service]
+        Places[Places Service]
+        Analysis[Analysis Service]
+        Recommender[Recommendation Service]
+    end
+
+    subgraph "External Services"
+        GP[Google Places API]
+        GG[Google Geocoding API]
+        OAI[OpenAI GPT API]
+    end
+
+    subgraph "Database Layer"
+        PG[(PostgreSQL + PostGIS)]
+        subgraph "Tables"
+            Cafes[(Cafes)]
+            Vibes[(Cafe Vibes)]
+            Amenities[(Cafe Amenities)]
+            Locations[(Location Cache)]
+        end
+    end
+
+    %% Frontend Flow
+    Form -->|Submit Search| Server
+    Server -->|Stream Response| Stream
+    Stream -->|Update UI| Results
+
+    %% Main Processing Flow
+    Server -->|1. Verify Setup| PG
+    Server -->|2. Get/Cache Location| Cache
+    Cache -->|3. Check Cache| Locations
+    Server -->|4. Search Places| Places
+    Places -->|Geocode| GG
+    Places -->|Search Cafes| GP
+    
+    %% Analysis Flow
+    Server -->|5. Analyze Reviews| Analysis
+    Analysis -->|Process Reviews| OAI
+    Analysis -->|Store Results| Vibes
+    Analysis -->|Store Results| Amenities
+    
+    %% Recommendation Flow
+    Server -->|6. Get Recommendations| Recommender
+    Recommender -->|Fetch Data| Cafes
+    Recommender -->|Get Scores| Vibes
+    Recommender -->|Get Scores| Amenities
+    
+    %% Cache Updates
+    Cache -->|Store Results| Locations
+    Cache -->|Store Analysis| Vibes
+    Cache -->|Store Analysis| Amenities
+
+    style UI fill:#f9f,stroke:#333,stroke-width:2px
+    style PG fill:#b5e853,stroke:#333,stroke-width:2px
+    style OAI fill:#ff9900,stroke:#333,stroke-width:2px
+    style GP fill:#4285f4,stroke:#333,stroke-width:2px
 ```
 
-### Database Schema
+### Component Details
 
-```sql
--- Cafes Table
-CREATE TABLE cafes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    google_place_id TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    location GEOGRAPHY(POINT) NOT NULL,
-    address TEXT NOT NULL,
-    price_level price_level,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+#### 1. Frontend Layer
+- **User Interface**: Modern SvelteKit application with TailwindCSS
+- **Search Form**: Handles user inputs for:
+  - Location (required)
+  - Mood (required)
+  - Price Range (optional)
+  - Requirements (optional)
+- **Stream Handler**: Processes server-sent events for real-time updates
+- **Results Display**: Renders cafe recommendations with animations
 
--- Cafe Vibes Table
-CREATE TABLE cafe_vibes (
-    cafe_id UUID REFERENCES cafes(id),
-    vibe_categories vibe_category[] NOT NULL,
-    confidence_scores FLOAT[] NOT NULL,
-    last_analyzed TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (cafe_id)
-);
+#### 2. API Layer
+- **SvelteKit Server**: Main application server handling:
+  - Request validation
+  - Response streaming
+  - Error handling
+  - Service orchestration
 
--- Cafe Amenities Table
-CREATE TABLE cafe_amenities (
-    cafe_id UUID REFERENCES cafes(id),
-    amenity_types amenity_type[] NOT NULL,
-    confidence_scores FLOAT[] NOT NULL,
-    last_analyzed TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (cafe_id)
-);
+- **Cache Service**: Manages multiple caching strategies:
+  - Location caching (24-hour TTL)
+  - Analysis results (24-hour TTL)
+  - In-memory caching for frequent requests
+  - Database-backed persistence
 
--- Location Cache Table
-CREATE TABLE location_cache (
-    address TEXT PRIMARY KEY,
-    coordinates GEOGRAPHY(POINT) NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+- **Places Service**: Handles external API interactions:
+  - Geocoding addresses
+  - Searching nearby cafes
+  - Fetching place details
+  - Review retrieval
+  - Error handling and rate limiting
 
-### Recommendation System
+- **Analysis Service**: Processes cafe data:
+  - Review text preprocessing
+  - OpenAI API integration
+  - Score normalization
+  - Confidence thresholding
+  - Result caching
 
-The recommendation engine uses a sophisticated scoring algorithm that considers:
+- **Recommendation Service**: Implements ranking algorithm:
+  - Multi-factor scoring
+  - Distance calculation
+  - Price compatibility
+  - Vibe matching
+  - Amenity verification
 
-1. **Vibe Matching (30% weight)**
-   - Analyzes café reviews using OpenAI GPT
-   - Extracts and scores vibe categories
-   - Only stores high-confidence (>0.4) assessments
-   - Example vibes: cozy (0.5), modern (0.7), quiet (0.4)
+#### 3. External Services
+- **Google Places API**:
+  - Nearby Search: 5km radius, type=cafe
+  - Place Details: reviews, photos, attributes
+  - Rate limit: 100 QPS
+  
+- **Google Geocoding API**:
+  - Address to coordinates conversion
+  - Rate limit: 50 QPS
+  
+- **OpenAI GPT API**:
+  - Model: gpt-3.5-turbo
+  - Context: 3 reviews, 150 chars each
+  - Temperature: 0.7
+  - Max tokens: 300
 
-2. **Amenity Scoring (30% weight)**
-   - Identifies available amenities from reviews
-   - Assigns confidence scores
-   - Stores only high-confidence (>0.5) amenities
-   - Example amenities: wifi (0.8), outdoor_seating (0.6), food_menu (0.9)
+#### 4. Database Layer
+- **PostgreSQL 13+ with PostGIS**:
+  - Spatial indexing
+  - Geographic calculations
+  - Array column optimization
+  - Full-text search capabilities
 
-3. **Price Compatibility (20% weight)**
-   - Flexible price range matching
-   - Includes cafes within one price level of target
-   - Scoring:
-     - Exact match: 1.0
-     - One level difference: 0.5
-     - Two or more levels: 0.0
+- **Tables**:
+  ```mermaid
+  erDiagram
+      cafes ||--o{ cafe_vibes : has
+      cafes ||--o{ cafe_amenities : has
+      cafes {
+          uuid id PK
+          text google_place_id UK
+          text name
+          geography location
+          text address
+          price_level price_level
+          timestamptz created_at
+          timestamptz updated_at
+      }
+      cafe_vibes {
+          uuid cafe_id FK
+          vibe_category[] vibe_categories
+          float[] confidence_scores
+          timestamptz last_analyzed
+      }
+      cafe_amenities {
+          uuid cafe_id FK
+          amenity_type[] amenities
+          float[] confidence_scores
+          timestamptz last_analyzed
+      }
+      location_cache {
+          text address PK
+          geography coordinates
+          timestamptz created_at
+      }
+  ```
 
-4. **Distance Calculation (20% weight)**
-   - Uses PostGIS for efficient distance calculations
-   - Prioritizes closer locations
-   - Score = 1 - (distance / max_distance)
-   - Default search radius: 5000 meters
+### Data Flow
 
-### Geocoding System
+1. **Initial Request**:
+   ```mermaid
+   sequenceDiagram
+       participant U as User
+       participant S as Server
+       participant C as Cache
+       participant G as Google APIs
+       participant D as Database
+       
+       U->>S: Submit Search
+       S->>C: Check Location Cache
+       alt Cache Hit
+           C->>D: Get Cached Cafes
+       else Cache Miss
+           S->>G: Geocode Location
+           G->>S: Return Coordinates
+           S->>G: Search Nearby Cafes
+           G->>S: Return Cafe List
+           S->>D: Store Cafes
+           S->>C: Cache Location
+       end
+   ```
 
-The application implements a robust geocoding system:
+2. **Analysis Flow**:
+   ```mermaid
+   sequenceDiagram
+       participant S as Server
+       participant A as Analysis Service
+       participant O as OpenAI
+       participant D as Database
+       
+       S->>A: Request Analysis
+       A->>D: Check Cached Analysis
+       alt Cache Hit
+           D->>A: Return Cached Results
+       else Cache Miss
+           A->>O: Process Reviews
+           O->>A: Return Scores
+           A->>D: Store High Confidence
+           A->>D: Update Cache
+       end
+       A->>S: Return Analysis
+   ```
 
-1. **Location Caching**
-   - Caches geocoded addresses to minimize API calls
-   - Stores coordinates in PostGIS geography type
-   - Automatic cache cleanup for old entries
+3. **Recommendation Flow**:
+   ```mermaid
+   sequenceDiagram
+       participant S as Server
+       participant R as Recommender
+       participant D as Database
+       participant O as OpenAI
+       
+       S->>R: Get Recommendations
+       R->>D: Fetch Cafe Data
+       R->>D: Get Vibe Scores
+       R->>D: Get Amenity Scores
+       R->>R: Calculate Rankings
+       R->>O: Generate Descriptions
+       O->>R: Return Descriptions
+       R->>S: Stream Results
+   ```
 
-2. **Google Geocoding Integration**
-   - Converts user-input addresses to coordinates
-   - Handles various address formats
-   - Error handling for invalid addresses
+### Performance Optimizations
 
-3. **Reverse Geocoding**
-   - Converts coordinates to readable addresses
-   - Used for displaying café locations
-   - Cached to minimize API usage
+1. **Database**:
+   - Spatial indexes on `location` columns
+   - B-tree indexes on `google_place_id`
+   - Array column optimization
+   - Parallel query execution
+
+2. **Caching**:
+   - Multi-level caching strategy
+   - Automatic cache invalidation
+   - Partial result caching
+   - Cache warming for popular locations
+
+3. **API Usage**:
+   - Batch requests where possible
+   - Rate limiting implementation
+   - Retry mechanisms
+   - Error handling with fallbacks
+
+4. **Query Optimization**:
+   - PostGIS function optimization
+   - Efficient joins
+   - Result limiting
+   - Index utilization
 
 ## API Integrations
 
