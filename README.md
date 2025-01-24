@@ -22,51 +22,9 @@ QuickCafé is an AI-powered café discovery platform that helps users find the p
 - ⚡ High-performance database queries with PostGIS spatial indexing
 - 🧠 Smart scoring system for café ranking based on multiple factors
 
-## System Flow
+## System Architecture
 
-### Step-by-Step Process
-
-1. **User Input** (Frontend)
-   - User enters location (required)
-   - Selects mood (required)
-   - Optional: price range and requirements
-   - Form validates input before submission
-
-2. **Initial Processing** (Server)
-   - Validates request parameters
-   - Checks database setup
-   - Begins recommendation pipeline
-
-3. **Location Processing**
-   - Checks location cache (24h TTL)
-   - If cache hit: retrieves cached cafe IDs
-   - If cache miss:
-     a. Geocodes location using Google API
-     b. Searches nearby cafes with Google Places API
-     c. Stores results in database
-     d. Updates location cache
-
-4. **Cafe Analysis**
-   - For each cafe:
-     a. Checks analysis cache (7d TTL)
-     b. If cache miss: Analyzes reviews with OpenAI
-     c. Stores high-confidence scores (>0.4 for vibes, >0.5 for amenities)
-     d. Updates analysis cache
-
-5. **Recommendation Generation**
-   - Fetches cafe data and scores
-   - Ranks cafes based on:
-     a. Mood match (from vibe scores)
-     b. Requirements match (from amenity scores)
-     c. Price compatibility
-     d. Distance from target location
-
-6. **Response Streaming**
-   - Generates natural language descriptions
-   - Streams results to frontend
-   - Updates UI in real-time
-
-### System Architecture Diagram
+### High-Level Overview
 
 ```mermaid
 graph TD
@@ -141,120 +99,207 @@ graph TD
     style GP fill:#4285f4,stroke:#333,stroke-width:2px
 ```
 
-### Data Flow Diagrams
+### Component Details
 
-1. **Location Processing Flow**:
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant S as Server
-    participant C as Cache
-    participant G as Google APIs
-    participant D as Database
-    
-    U->>S: 1. Submit Search
-    S->>C: 2. Check Location Cache
-    C->>D: 3. Query Cache Table
-    
-    alt Cache Hit
-        D-->>C: 4a. Return Cached Cafe IDs
-        C-->>S: 4b. Return Cached Results
-    else Cache Miss
-        S->>G: 5a. Geocode Location
-        G-->>S: 5b. Return Coordinates
-        S->>G: 6a. Search Nearby Cafes
-        G-->>S: 6b. Return Cafe List
-        S->>D: 7a. Store Cafes
-        S->>C: 7b. Update Location Cache
-    end
-```
+#### 1. Frontend Layer
+- **User Interface**: Modern SvelteKit application with TailwindCSS
+- **Search Form**: Handles user inputs for:
+  - Location (required)
+  - Mood (required)
+  - Price Range (optional)
+  - Requirements (optional)
+- **Stream Handler**: Processes server-sent events for real-time updates
+- **Results Display**: Renders cafe recommendations with animations
+
+#### 2. API Layer
+- **SvelteKit Server**: Main application server handling:
+  - Request validation
+  - Response streaming
+  - Error handling
+  - Service orchestration
+
+- **Cache Service**: Manages multiple caching strategies:
+  - Location caching (24-hour TTL)
+  - Analysis results (24-hour TTL)
+  - In-memory caching for frequent requests
+  - Database-backed persistence
+
+- **Places Service**: Handles external API interactions:
+  - Geocoding addresses
+  - Searching nearby cafes
+  - Fetching place details
+  - Review retrieval
+  - Error handling and rate limiting
+
+- **Analysis Service**: Processes cafe data:
+  - Review text preprocessing
+  - OpenAI API integration
+  - Score normalization
+  - Confidence thresholding
+  - Result caching
+
+- **Recommendation Service**: Implements ranking algorithm:
+  - Multi-factor scoring
+  - Distance calculation
+  - Price compatibility
+  - Vibe matching
+  - Amenity verification
+
+#### 3. External Services
+- **Google Places API**:
+  - Nearby Search: 5km radius, type=cafe
+  - Place Details: reviews, photos, attributes
+  - Rate limit: 100 QPS
+  
+- **Google Geocoding API**:
+  - Address to coordinates conversion
+  - Rate limit: 50 QPS
+  
+- **OpenAI GPT API**:
+  - Model: gpt-3.5-turbo
+  - Context: 3 reviews, 150 chars each
+  - Temperature: 0.7
+  - Max tokens: 300
+
+#### 4. Database Layer
+- **PostgreSQL 13+ with PostGIS**:
+  - Spatial indexing
+  - Geographic calculations
+  - Array column optimization
+  - Full-text search capabilities
+
+- **Tables**:
+  ```mermaid
+  erDiagram
+      cafes ||--o{ cafe_vibes : has
+      cafes ||--o{ cafe_amenities : has
+      cafes {
+          uuid id PK
+          text google_place_id UK
+          text name
+          geography location
+          text address
+          price_level price_level
+          timestamptz created_at
+          timestamptz updated_at
+      }
+      cafe_vibes {
+          uuid cafe_id FK
+          vibe_category[] vibe_categories
+          float[] confidence_scores
+          timestamptz last_analyzed
+      }
+      cafe_amenities {
+          uuid cafe_id FK
+          amenity_type[] amenities
+          float[] confidence_scores
+          timestamptz last_analyzed
+      }
+      location_cache {
+          text address PK
+          geography coordinates
+          timestamptz created_at
+      }
+  ```
+
+### Data Flow
+
+1. **Initial Request**:
+   ```mermaid
+   sequenceDiagram
+       participant U as User
+       participant S as Server
+       participant C as Cache
+       participant G as Google APIs
+       participant D as Database
+       
+       U->>S: 1. Submit Search
+       S->>C: 2. Check Location Cache
+       C->>D: 3. Query Cache Table
+       
+       alt Cache Hit
+           D-->>C: 4a. Return Cached Cafe IDs
+           C-->>S: 4b. Return Cached Results
+       else Cache Miss
+           S->>G: 5a. Geocode Location
+           G-->>S: 5b. Return Coordinates
+           S->>G: 6a. Search Nearby Cafes
+           G-->>S: 6b. Return Cafe List
+           S->>D: 7a. Store Cafes
+           S->>C: 7b. Update Location Cache
+       end
+   ```
 
 2. **Analysis Flow**:
-```mermaid
-sequenceDiagram
-    participant S as Server
-    participant A as Analysis Service
-    participant C as Cache
-    participant O as OpenAI
-    participant D as Database
-    
-    S->>A: 1. Request Analysis
-    A->>C: 2. Check Analysis Cache
-    C->>D: 3. Query Vibes/Amenities
-    
-    alt Cache Hit
-        D-->>C: 4a. Return Cached Analysis
-        C-->>A: 4b. Return Results
-    else Cache Miss
-        A->>O: 5a. Process Reviews
-        O-->>A: 5b. Return Scores
-        A->>D: 6a. Store High Confidence
-        A->>C: 6b. Update Cache
-    end
-    A-->>S: 7. Return Analysis
-```
+   ```mermaid
+   sequenceDiagram
+       participant S as Server
+       participant A as Analysis Service
+       participant C as Cache
+       participant O as OpenAI
+       participant D as Database
+       
+       S->>A: 1. Request Analysis
+       A->>C: 2. Check Analysis Cache
+       C->>D: 3. Query Vibes/Amenities
+       
+       alt Cache Hit
+           D-->>C: 4a. Return Cached Analysis
+           C-->>A: 4b. Return Results
+       else Cache Miss
+           A->>O: 5a. Process Reviews
+           O-->>A: 5b. Return Scores
+           A->>D: 6a. Store High Confidence
+           A->>C: 6b. Update Cache
+       end
+       A-->>S: 7. Return Analysis
+   ```
 
 3. **Recommendation Flow**:
-```mermaid
-sequenceDiagram
-    participant S as Server
-    participant R as Recommender
-    participant D as Database
-    participant O as OpenAI
-    participant U as User
-    
-    S->>R: 1. Get Recommendations
-    R->>D: 2a. Fetch Cafe Data
-    R->>D: 2b. Get Vibe Scores
-    R->>D: 2c. Get Amenity Scores
-    R->>R: 3. Calculate Rankings
-    R-->>S: 4. Return Top Matches
-    S->>O: 5a. Generate Descriptions
-    O-->>S: 5b. Return Text
-    S->>U: 6. Stream Results
-```
+   ```mermaid
+   sequenceDiagram
+       participant S as Server
+       participant R as Recommender
+       participant D as Database
+       participant O as OpenAI
+       participant U as User
+       
+       S->>R: 1. Get Recommendations
+       R->>D: 2a. Fetch Cafe Data
+       R->>D: 2b. Get Vibe Scores
+       R->>D: 2c. Get Amenity Scores
+       R->>R: 3. Calculate Rankings
+       R-->>S: 4. Return Top Matches
+       S->>O: 5a. Generate Descriptions
+       O-->>S: 5b. Return Text
+       S->>U: 6. Stream Results
+   ```
 
-### Key Components
+### Performance Optimizations
 
-1. **Frontend Layer**
-   - SvelteKit application
-   - TailwindCSS styling
-   - Server-sent events handler
-   - Real-time UI updates
+1. **Database**:
+   - Spatial indexes on `location` columns
+   - B-tree indexes on `google_place_id`
+   - Array column optimization
+   - Parallel query execution
 
-2. **API Layer**
-   - Request validation
-   - Service orchestration
-   - Error handling
-   - Response streaming
+2. **Caching**:
+   - Multi-level caching strategy
+   - Automatic cache invalidation
+   - Partial result caching
+   - Cache warming for popular locations
 
-3. **Services**
-   - Places Service: Google API integration
-   - Analysis Service: OpenAI integration
-   - Cache Service: PostgreSQL-based caching
-   - Recommendation Service: Ranking algorithm
+3. **API Usage**:
+   - Batch requests where possible
+   - Rate limiting implementation
+   - Retry mechanisms
+   - Error handling with fallbacks
 
-4. **Database Layer**
-   - PostgreSQL with PostGIS
-   - Spatial indexing
-   - Cache tables
-   - Analysis storage
-
-### Caching Strategy
-
-1. **Location Cache**
-   - Key: `{location}:{priceRange}:{radius}`
-   - Value: Array of cafe IDs
-   - TTL: 24 hours
-   - Stored in: PostgreSQL
-
-2. **Analysis Cache**
-   - Key: cafe_id
-   - Value: High-confidence scores
-   - TTL: 7 days
-   - Confidence thresholds:
-     - Vibes: >0.4
-     - Amenities: >0.5
+4. **Query Optimization**:
+   - PostGIS function optimization
+   - Efficient joins
+   - Result limiting
+   - Index utilization
 
 ## API Integrations
 
