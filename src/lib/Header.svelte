@@ -7,7 +7,7 @@
 <nav class="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center border-b border-neutral-200">
   <button on:click={() => dispatch('click')} class="flex items-center">
     <CoffeeIcon />
-    <div class="text-2xl font-bold text-neutral-800 ml-2">quickcafe.dev</div>
+    <div class="text-2xl font-bold text-neutral-800 ml-2">QuickCafé</div>
   </button>
   <div class="space-x-8">
     <a
