@@ -35,28 +35,22 @@
     { value: 'workspace_friendly', label: 'Workspace Friendly' },
     { value: 'food_menu', label: 'Food Menu' }
   ];
-
-  function handleSubmit() {
-    dispatch('submit');
-  }
 </script>
 
-<div class="pt-6 md:pt-10 text-slate-200">
-  <div>
-    <div class="mb-8">
-      <div class="mb-4 font-semibold text-lg flex items-center">
-        What kind of vibe are you looking for?
-        <span class="ml-2 text-sm text-pink-400">*</span>
+<div class="bg-white rounded-2xl p-8">
+  <div class="space-y-8">
+    <div>
+      <div class="mb-4">
+        <h3 class="text-xl font-semibold text-neutral-800"> What kind of vibe are you looking for? <span class="text-pink-500 text-sm">*</span> </h3>
       </div>
-      <div class="flex items-center flex-wrap">
+      <div class="flex flex-wrap gap-2">
         {#each moodTypes as type}
           <button
-            on:click={() => {
-              mood = type.value;
-            }}
-            class={`${
-              mood === type.value ? 'bg-pink-600/40' : ''
-            } text-slate-200 font-bold mr-2 text-sm mt-2 py-2 px-4 rounded-full border border-pink-600`}
+            on:click={() => mood = type.value}
+            class="px-4 py-2 rounded-full border transition-all
+            {mood === type.value 
+              ? 'bg-pink-50 border-pink-500 text-pink-700' 
+              : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'}"
           >
             {type.label}
           </button>
@@ -64,55 +58,54 @@
       </div>
     </div>
 
-    <div class="mb-8">
-      <div class="mb-4 font-semibold text-lg flex items-center">
-        What's your price range?
-        <span class="ml-2 text-sm text-slate-400">(Optional)</span>
-      </div>
-      <div class="flex items-center">
-        {#each priceRanges as range}
-          <button
-            on:click={() => {
-              priceRange = range.value;
-            }}
-            class={`${
-              priceRange === range.value ? 'bg-pink-600/40' : ''
-            } text-slate-200 font-bold mr-2 text-sm mt-2 py-2 px-4 rounded-full border border-pink-600`}
-          >
-            <div>{range.value}</div>
-            <div class="text-xs">{range.label}</div>
-          </button>
-        {/each}
-      </div>
-    </div>
-
-    <div class="mb-8">
-      <div class="mb-4 font-semibold text-lg flex items-center">
-        Where are you looking to go?
-        <span class="ml-2 text-sm text-pink-400">*</span>
+    <div>
+      <div class="mb-4">
+        <h3 class="text-xl font-semibold text-neutral-800">Where are you looking to go? <span class="text-pink-500 text-sm">*</span></h3>
       </div>
       <input
         bind:value={location}
-        class="bg-white/40 border border-white/0 p-2 rounded-md placeholder:text-slate-800 text-slate-900 w-full font-medium"
+        class="w-full px-4 py-3 rounded-xl border border-neutral-200 
+        focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none
+        placeholder:text-neutral-400 text-neutral-900"
         placeholder="Ex. Downtown Seattle, Capitol Hill, etc."
       />
     </div>
 
     <div>
-      <div class="mb-4 font-semibold text-lg flex items-center">
-        Any specific requirements?
-        <span class="ml-2 text-sm text-slate-400">(Optional)</span>
+      <div class="mb-4">
+        <h3 class="text-xl font-semibold text-neutral-800">What's your price range? <span class="text-neutral-500 text-sm">(Optional)</span> </h3>
       </div>
-      <div class="flex items-center flex-wrap">
+      <div class="flex gap-2">
+        {#each priceRanges as range}
+          <button
+            on:click={() => priceRange = range.value}
+            class="px-6 py-3 rounded-full border transition-all text-center
+            {priceRange === range.value 
+              ? 'bg-pink-50 border-pink-500 text-pink-700' 
+              : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'}"
+          >
+            <div class="font-bold">{range.value}</div>
+            <div class="text-xs mt-1">{range.label}</div>
+          </button>
+        {/each}
+      </div>
+    </div>
+
+    <div>
+      <div class="mb-4">
+        <h3 class="text-xl font-semibold text-neutral-800">Any specific requirements? <span class="text-neutral-500 text-sm">(Optional)</span> </h3>
+      </div>
+      <div class="flex flex-wrap gap-2">
         {#each requirementTypes as type}
           <label
-            class={`${
-              requirements.includes(type.value) ? 'bg-pink-600/40' : ''
-            } text-slate-200 font-bold mr-2 mt-2 text-sm py-2 px-4 rounded-full border border-pink-600`}
+            class="px-4 py-2 rounded-full border cursor-pointer transition-all
+            {requirements.includes(type.value)
+              ? 'bg-pink-50 border-pink-500 text-pink-700'
+              : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'}"
           >
             <input
-              class="hidden"
               type="checkbox"
+              class="hidden"
               bind:group={requirements}
               name="requirements"
               value={type.value}
@@ -124,23 +117,22 @@
     </div>
 
     <button
-      on:click={handleSubmit}
-      class={`${
-        loading
-          ? 'bg-pink-400/50'
-          : 'bg-gradient-to-r from-pink-700 via-pink-600 to-pink-700 hover:from-pink-600 hover:via-pink-500 hover:to-pink-600'
-      } mt-8 w-full h-10 text-white font-bold p-3 rounded-full flex items-center justify-center`}
+      on:click={() => dispatch('submit')}
       disabled={!location || !mood || loading}
+      class="w-full py-4 rounded-xl font-semibold transition-all
+      {loading || !location || !mood
+        ? 'bg-neutral-100 text-neutral-400'
+        : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white hover:from-pink-700 hover:to-pink-600'}"
     >
       {#if loading}
         <LoadingIndicator />
       {:else}
-        <p>Find My Perfect Café</p>
+        Find My Perfect Café
       {/if}
     </button>
 
     {#if !mood || !location}
-      <div class="mt-2 text-sm text-pink-400 text-center">
+      <div class="text-sm text-pink-500 text-center">
         * Required fields must be filled
       </div>
     {/if}

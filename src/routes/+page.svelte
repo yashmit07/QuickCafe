@@ -3,7 +3,6 @@
   import LoadingCard from '$lib/LoadingCard.svelte';
   import RecommendationCard from '$lib/RecommendationCard.svelte';
   import Header from '$lib/Header.svelte';
-  import Home from '$lib/Home.svelte';
   import Footer from '$lib/Footer.svelte';
 
   let showSearchForm = false;
@@ -33,29 +32,15 @@
     loading = true;
     incomingStream = '';
     recommendations = [];
-    let errorMessage = '';
-
+    
     try {
-      console.log('Submitting form with:', { mood, priceRange, location, requirements });
-      
       const response = await fetch('/api/getRecommendation', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          mood,
-          priceRange,
-          location,
-          requirements
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mood, priceRange, location, requirements })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('API Error:', errorData);
-        throw new Error(errorData.error || 'Failed to get recommendations');
-      }
+      if (!response.ok) throw new Error('Failed to get recommendations');
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No reader available');
@@ -63,48 +48,54 @@
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
-        const text = new TextDecoder().decode(value);
-        incomingStream += text;
+        incomingStream += new TextDecoder().decode(value);
       }
 
-      // Once streaming is complete, parse the recommendations
-      const recommendationTexts = incomingStream
+      recommendations = incomingStream
         .split(/\d\.\s/)
-        .filter(text => text.trim().length > 0);
-
-      recommendations = recommendationTexts.map(text => {
-        const lines = text.split('\n').filter(line => line.trim().length > 0);
-        return {
-          name: lines[0]?.trim() || '',
-          description: lines[1]?.trim() || '',
-          features: lines[2]?.trim() || '',
-          bestFor: lines[3]?.trim() || ''
-        };
-      });
-
+        .filter(text => text.trim())
+        .map(text => {
+          const lines = text.split('\n').filter(line => line.trim());
+          return {
+            name: lines[0]?.trim() || '',
+            description: lines[1]?.trim() || '',
+            features: lines[2]?.trim() || '',
+            bestFor: lines[3]?.trim() || ''
+          };
+        });
     } catch (error) {
       console.error('Error:', error);
-      errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      alert(error instanceof Error ? error.message : 'An unexpected error occurred');
     } finally {
       loading = false;
-    }
-
-    if (errorMessage) {
-      // Show error message to user
-      alert(errorMessage);
     }
   }
 </script>
 
-<div class="min-h-screen bg-neutral-900">
-  <div class="max-w-4xl mx-auto px-4">
-    <Header on:click={handleReturnHome} />
-    
+<div class="min-h-screen bg-[#FBF7F4]">
+  <Header on:click={handleReturnHome} />
+  
+  <main class="max-w-4xl mx-auto px-4 py-12">
     {#if !showSearchForm}
-      <Home on:click={handleStartSearch} />
+      <div class="text-center space-y-8">
+        <h1 class="text-5xl font-bold text-neutral-800">
+          Discover your perfect<br>café experience
+        </h1>
+        <p class="text-xl text-neutral-600">
+          Find the ideal spot that matches your vibe and needs
+        </p>
+        <div class="flex justify-center gap-4">
+          <button
+            on:click={handleStartSearch}
+            class="px-6 py-3 rounded-full bg-gradient-to-r from-pink-600 to-pink-500 
+            text-white font-medium hover:from-pink-700 hover:to-pink-600"
+          >
+            Find My Perfect Café
+          </button>
+        </div>
+      </div>
     {:else}
-      <div class="mt-8">
+      <div class="space-y-8">
         <Form
           bind:mood
           bind:priceRange
@@ -113,23 +104,21 @@
           bind:loading
           on:submit={handleSubmit}
         />
-      </div>
 
-      {#if loading}
-        <div class="mt-8">
+        {#if loading}
           <LoadingCard {incomingStream} />
-        </div>
-      {/if}
+        {/if}
 
-      {#if recommendations.length > 0}
-        <div class="mt-8 space-y-4">
-          {#each recommendations as recommendation}
-            <RecommendationCard {recommendation} />
-          {/each}
-        </div>
-      {/if}
+        {#if recommendations.length > 0}
+          <div class="space-y-4">
+            {#each recommendations as recommendation}
+              <RecommendationCard {recommendation} />
+            {/each}
+          </div>
+        {/if}
+      </div>
     {/if}
+  </main>
 
-    <Footer />
-  </div>
+  <Footer />
 </div>
