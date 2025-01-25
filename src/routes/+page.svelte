@@ -51,18 +51,52 @@
         incomingStream += new TextDecoder().decode(value);
       }
 
+      // Parse the recommendations using the ### separator
       recommendations = incomingStream
-        .split(/\d\.\s/)
+        .split('###')
         .filter(text => text.trim())
         .map(text => {
-          const lines = text.split('\n').filter(line => line.trim());
-          return {
-            name: lines[0]?.trim() || '',
-            description: lines[1]?.trim() || '',
-            features: lines[2]?.trim() || '',
-            bestFor: lines[3]?.trim() || ''
-          };
+          const lines = text.trim().split('\n');
+          const recommendation: any = {};
+          
+          // Skip empty lines and ensure we have content
+          lines.filter(line => line.trim()).forEach(line => {
+            const [key, ...valueParts] = line.split(':');
+            if (valueParts.length > 0) {
+              const value = valueParts.join(':').trim();
+              switch(key.trim().toLowerCase()) {
+                case 'name':
+                  recommendation.name = value;
+                  break;
+                case 'description':
+                  recommendation.description = value;
+                  break;
+                case 'features':
+                  recommendation.features = value;
+                  break;
+                case 'best for':
+                  recommendation.bestFor = value;
+                  break;
+              }
+            }
+          });
+          
+          // Log for debugging
+          if (!recommendation.name || !recommendation.description) {
+            console.log('Incomplete recommendation:', { text, recommendation });
+          }
+          
+          return recommendation;
+        })
+        .filter(rec => {
+          const isComplete = rec.name && rec.description && rec.features && rec.bestFor;
+          if (!isComplete) {
+            console.log('Filtered out incomplete recommendation:', rec);
+          }
+          return isComplete;
         });
+
+      console.log(`Parsed ${recommendations.length} recommendations`);
     } catch (error) {
       console.error('Error:', error);
       alert(error instanceof Error ? error.message : 'An unexpected error occurred');

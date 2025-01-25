@@ -1,4 +1,5 @@
 <script lang="ts">
+  /// <reference types="@types/google.maps" />
   import { createEventDispatcher } from 'svelte';
   import LoadingIndicator from './Loading.svelte';
 
@@ -67,7 +68,7 @@
         class="w-full px-4 py-3 rounded-xl border border-neutral-200 
         focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none
         placeholder:text-neutral-400 text-neutral-900"
-        placeholder="Ex. Downtown Seattle, Capitol Hill, etc."
+        placeholder="Enter a city name (e.g. San Francisco, CA)"
       />
     </div>
 

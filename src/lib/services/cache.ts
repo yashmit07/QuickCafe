@@ -1,6 +1,8 @@
 // src/lib/services/cache.ts
 import { supabase } from '$lib/db/supabase'
 import type { Cafe, VibeCategory, AmenityType } from '$lib/types/database'
+import { Redis } from '@upstash/redis'
+import { UPSTASH_REDIS_URL, UPSTASH_REDIS_TOKEN } from '$env/static/private'
 
 interface VibeScore {
     vibe_category: VibeCategory;
@@ -15,16 +17,34 @@ interface AmenityScore {
 export class CacheService {
     private static readonly ONE_DAY = 24 * 60 * 60 * 1000;
     private static readonly ONE_WEEK = 7 * CacheService.ONE_DAY;
+    private static readonly REDIS_TTL = 3600; // 1 hour in seconds
 
     private readonly LOCATION_CACHE_DURATION = CacheService.ONE_DAY;
     private readonly ANALYSIS_CACHE_DURATION = CacheService.ONE_WEEK;
+    private redis: Redis;
+
+    constructor() {
+        this.redis = new Redis({
+            url: UPSTASH_REDIS_URL,
+            token: UPSTASH_REDIS_TOKEN
+        });
+    }
 
     /**
      * Check if we have cached results for a location
      */
     async getLocationCache(searchLocation: string, priceRange?: string, radius: number = 5000): Promise<string[] | null> {
         try {
-            const cacheKey = `${searchLocation}:${priceRange || 'any'}:${radius}`;
+            // Try Redis first
+            const cacheKey = this.buildLocationCacheKey(searchLocation, priceRange, radius);
+            const redisCache = await this.redis.get<string[]>(cacheKey);
+            
+            if (redisCache) {
+                console.log('Redis cache hit for location:', searchLocation);
+                return redisCache;
+            }
+
+            // Try Supabase if not in Redis
             const { data, error } = await supabase
                 .from('location_cache')
                 .select('cafe_ids, last_updated')
@@ -41,6 +61,11 @@ export class CacheService {
                 return null;
             }
 
+            // Store in Redis for faster subsequent access
+            await this.redis.set(cacheKey, data.cafe_ids, {
+                ex: CacheService.REDIS_TTL
+            });
+
             return data.cafe_ids;
         } catch (error) {
             console.error('Error getting location cache:', error);
@@ -53,18 +78,21 @@ export class CacheService {
      */
     async cacheLocationResults(searchLocation: string, cafeIds: string[], priceRange?: string, radius: number = 5000): Promise<void> {
         try {
-            const cacheKey = `${searchLocation}:${priceRange || 'any'}:${radius}`;
-            const { error } = await supabase
-                .from('location_cache')
-                .upsert({
-                    search_location: cacheKey,
-                    cafe_ids: cafeIds,
-                    last_updated: new Date().toISOString()
-                });
-
-            if (error) {
-                throw error;
-            }
+            const cacheKey = this.buildLocationCacheKey(searchLocation, priceRange, radius);
+            
+            // Store in both Redis and Supabase
+            await Promise.all([
+                this.redis.set(cacheKey, cafeIds, {
+                    ex: CacheService.REDIS_TTL
+                }),
+                supabase
+                    .from('location_cache')
+                    .upsert({
+                        search_location: cacheKey,
+                        cafe_ids: cafeIds,
+                        last_updated: new Date().toISOString()
+                    })
+            ]);
         } catch (error) {
             console.error('Error caching location results:', error);
             throw error;
@@ -72,11 +100,18 @@ export class CacheService {
     }
 
     /**
-     * Check if we have a recent vibe analysis for a cafe
+     * Check if we have a recent analysis for a cafe
      */
     async hasRecentAnalysis(cafeId: string): Promise<boolean> {
         try {
-            // Check both vibes and amenities
+            // Check Redis first
+            const redisKey = `analysis:${cafeId}`;
+            const redisCache = await this.redis.get(redisKey);
+            if (redisCache) {
+                return true;
+            }
+
+            // Check database if not in Redis
             const [vibesResult, amenitiesResult] = await Promise.all([
                 supabase
                     .from('cafe_vibes')
@@ -97,9 +132,17 @@ export class CacheService {
 
             const vibesAge = Date.now() - new Date(vibesResult.data.last_analyzed).getTime();
             const amenitiesAge = Date.now() - new Date(amenitiesResult.data.last_analyzed).getTime();
+            const isRecent = vibesAge <= this.ANALYSIS_CACHE_DURATION && 
+                           amenitiesAge <= this.ANALYSIS_CACHE_DURATION;
 
-            return vibesAge <= this.ANALYSIS_CACHE_DURATION && 
-                   amenitiesAge <= this.ANALYSIS_CACHE_DURATION;
+            if (isRecent) {
+                // Cache in Redis for faster subsequent checks
+                await this.redis.set(redisKey, true, {
+                    ex: CacheService.REDIS_TTL
+                });
+            }
+
+            return isRecent;
         } catch (error) {
             console.error('Error checking analysis recency:', error);
             return false;
@@ -169,5 +212,9 @@ export class CacheService {
         } catch (error) {
             console.error('Error invalidating location cache:', error);
         }
+    }
+
+    private buildLocationCacheKey(location: string, priceRange?: string, radius: number = 5000): string {
+        return `${location}:${priceRange || 'any'}:${radius}`;
     }
 }

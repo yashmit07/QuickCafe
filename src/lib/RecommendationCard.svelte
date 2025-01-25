@@ -6,6 +6,11 @@
     features: '',
     bestFor: ''
   };
+
+  // Parse price and distance from name
+  $: [cafeName, details] = recommendation.name.split('-').map(s => s.trim());
+  $: priceLevel = details?.split('(')[0]?.trim() || '';
+  $: distance = details?.match(/\(([^)]+)\)/)?.[1] || '';
 </script>
 
 <div in:fade|global>
@@ -45,27 +50,36 @@
       </div>
 
       <div class="flex-1">
-        <h2 class="text-2xl font-bold text-neutral-800 mb-4">
-          {recommendation.name}
-        </h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-2xl font-bold text-neutral-800">
+            {cafeName}
+          </h2>
+          <div class="flex items-center gap-4">
+            <span class="text-pink-600 font-semibold">{priceLevel}</span>
+            <span class="text-neutral-500 text-sm">{distance}</span>
+          </div>
+        </div>
+
         <p class="text-neutral-600 mb-4">
           {recommendation.description}
         </p>
-        <p class="text-neutral-500 mb-4">
-          {recommendation.features}
-        </p>
-        <p class="text-neutral-500 mb-6">
-          <span class="font-medium">Best for:</span> {recommendation.bestFor}
-        </p>
-        
-        <div class="flex flex-wrap gap-2">
-          {#if recommendation.features}
-            {#each recommendation.features.split(',') as feature}
-              <span class="px-3 py-1 rounded-full text-xs border border-pink-200 bg-pink-50 text-pink-700">
-                {feature.trim()}
-              </span>
-            {/each}
-          {/if}
+
+        <div class="space-y-2 mb-6">
+          <div class="flex gap-2 items-start">
+            <span class="font-medium text-neutral-800 whitespace-nowrap">Features:</span>
+            <div class="flex flex-wrap gap-2">
+              {#each recommendation.features.split(',') as feature}
+                <span class="px-3 py-1 rounded-full text-xs border border-pink-200 bg-pink-50 text-pink-700">
+                  {feature.trim()}
+                </span>
+              {/each}
+            </div>
+          </div>
+          
+          <div class="flex gap-2 items-start">
+            <span class="font-medium text-neutral-800 whitespace-nowrap">Best for:</span>
+            <span class="text-neutral-600">{recommendation.bestFor}</span>
+          </div>
         </div>
       </div>
     </div>

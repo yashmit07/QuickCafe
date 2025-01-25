@@ -216,22 +216,35 @@ export const POST: RequestHandler = async ({ request }) => {
             coordinates = await placesService.geocodeLocation(location)
         }
 
-        // 5. Get or perform analysis for each cafe
-        console.log('Analyzing cafes...');
+        // 5. Analyze cafes in batches
+        const BATCH_SIZE = 3;
+        const cafesToAnalyze = [];
+        
         for (const cafe of cafes) {
             if (!(await cacheService.hasRecentAnalysis(cafe.id))) {
-                console.log(`Analyzing cafe ${cafe.id}...`);
-                const analysis = await analysisService.analyzeReviews(cafe)
-                if (analysis) {
-                    await cacheService.cacheAnalysisResults(
-                        cafe.id,
-                        analysis.vibes,
-                        analysis.amenities
-                    )
-                }
+                cafesToAnalyze.push(cafe);
             }
         }
-        console.log('Cafe analysis complete');
+
+        if (cafesToAnalyze.length > 0) {
+            console.log(`Analyzing ${cafesToAnalyze.length} cafes in batches of ${BATCH_SIZE}...`);
+            for (let i = 0; i < cafesToAnalyze.length; i += BATCH_SIZE) {
+                const batch = cafesToAnalyze.slice(i, i + BATCH_SIZE);
+                await Promise.all(
+                    batch.map(async (cafe) => {
+                        console.log(`Analyzing cafe ${cafe.id}...`);
+                        const analysis = await analysisService.analyzeReviews(cafe);
+                        if (analysis) {
+                            await cacheService.cacheAnalysisResults(
+                                cafe.id,
+                                analysis.vibes,
+                                analysis.amenities
+                            );
+                        }
+                    })
+                );
+            }
+        }
 
         // 6. Get scored and ranked recommendations
         console.log('Getting recommendations...');
@@ -253,26 +266,39 @@ export const POST: RequestHandler = async ({ request }) => {
         // 7. Create prompt using ranked data
         const prompt = `Act as a knowledgeable local café expert. I have analyzed and ranked ${rankedCafes.length} best matching cafes in ${location} based on:
 
-        Desired Vibe: ${mood}
-        Price Range: ${priceRange}
-        Special Requirements: ${requirements.join(', ')}
+Desired Vibe: ${mood}
+Price Range: ${priceRange || 'Any'}
+Special Requirements: ${requirements.length ? requirements.join(', ') : 'None'}
 
-        Here are the best matches in order of relevance. For each café, provide:
-        1. Name and key details (price, distance)
-        2. Brief description of atmosphere and offerings
-        3. Notable features that match the requirements
-        4. Best suited for (e.g., working, meetings, casual hangout)
+For each café, provide a recommendation in this exact format (including the ### separators):
 
-        Format each recommendation in a clean, easy-to-read way.
+###
+Name: [Cafe Name] - [Price Level] ([Distance] meters)
+Description: [2-3 sentences about atmosphere and offerings]
+Features: [List key features and amenities that match requirements]
+Best For: [Specific use cases like working, meetings, casual hangout]
+###
 
-        Cafe data: ${JSON.stringify(rankedCafes, null, 2)}`
+Important:
+1. Keep recommendations concise and factual
+2. Include EXACT distance in meters from the data
+3. Use the exact price level from the data
+4. Separate each recommendation with ###
+5. Start each field with the exact labels shown above
+6. Focus on features that match the user's requirements
+7. ALWAYS provide exactly 5 recommendations
+8. Do not include any text before the first ### or after the last ###
+9. Ensure each recommendation follows the exact format with all fields
+
+Here is the cafe data to use:
+${JSON.stringify(rankedCafes, null, 2)}`
 
         // 8. Stream recommendations
         const payload: OpenAIPayload = {
             model: 'gpt-3.5-turbo',
             messages: [{ role: 'user', content: prompt }],
-            temperature: 0.7,
-            max_tokens: 1000,
+            temperature: 0.5,
+            max_tokens: 1500,
             top_p: 1,
             frequency_penalty: 0,
             presence_penalty: 0,

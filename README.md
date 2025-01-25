@@ -1,6 +1,6 @@
 # QuickCafé
 
-QuickCafé is an AI-powered café discovery platform that helps users find the perfect coffee spot based on their preferences. By combining OpenAI's GPT API for intelligent analysis, Google Places API for real café data, and PostGIS for location-based searching, it delivers personalized café suggestions with detailed atmosphere and amenity analysis.
+QuickCafé is an AI-powered café discovery platform that helps users find the perfect coffee spot based on their preferences. By combining OpenAI's GPT API for intelligent analysis, Google Places API for real café data, and a multi-layer caching system, it delivers personalized café suggestions with detailed atmosphere and amenity analysis.
 
 ## Features
 
@@ -8,19 +8,23 @@ QuickCafé is an AI-powered café discovery platform that helps users find the p
   - Mood preferences (cozy, modern, quiet, lively, artistic, traditional, industrial)
   - Required amenities (WiFi, outdoor seating, power outlets, etc.)
   - Price range preferences ($, $$, $$$)
-  - Location proximity with configurable radius
+  - Location proximity with 3-mile radius
 - 📍 Location-aware recommendations using:
-  - Google Geocoding API for address to coordinates conversion
+  - Google Places Autocomplete for city selection
+  - Geocoding API for coordinates conversion
   - PostGIS for efficient geographical queries
-  - Location caching to minimize API calls
+  - Multi-layer location caching
 - 🤖 AI-powered analysis using OpenAI GPT-3.5:
-  - Review analysis for vibe detection
-  - Amenity identification from reviews
+  - Batch processing for review analysis
+  - Parallel processing for better performance
   - Confidence scoring for reliable results
+- 💨 High-performance caching system:
+  - Redis for fast in-memory caching
+  - Supabase for persistent storage
+  - Automatic cache invalidation
+  - Cache warming for popular locations
 - 🔄 Real-time data streaming with server-sent events
 - 🎨 Modern, responsive UI with TailwindCSS
-- ⚡ High-performance database queries with PostGIS spatial indexing
-- 🧠 Smart scoring system for café ranking based on multiple factors
 
 ## System Architecture
 
@@ -31,6 +35,7 @@ graph TD
     subgraph "Frontend Layer"
         UI[User Interface]
         Form[Search Form]
+        AC[Places Autocomplete]
         Results[Results Display]
         Stream[Stream Handler]
     end
@@ -43,425 +48,221 @@ graph TD
         Recommender[Recommendation Service]
     end
 
+    subgraph "Cache Layer"
+        Redis[(Redis Cache)]
+        Supabase[(Supabase DB)]
+    end
+
     subgraph "External Services"
         GP[Google Places API]
         GG[Google Geocoding API]
         OAI[OpenAI GPT API]
     end
 
-    subgraph "Database Layer"
-        PG[(PostgreSQL + PostGIS)]
-        subgraph "Tables"
-            Cafes[(Cafes)]
-            Vibes[(Cafe Vibes)]
-            Amenities[(Cafe Amenities)]
-            Locations[(Location Cache)]
-        end
-    end
-
     %% Frontend Flow
-    Form -->|1. Submit Search| Server
+    Form --> AC
+    AC --> Places
+    Form -->|Submit Search| Server
+
+    %% Cache Flow
+    Server -->|1. Check Cache| Cache
+    Cache -->|Fast Access| Redis
+    Cache -->|Persistent Storage| Supabase
 
     %% Main Processing Flow
-    Server -->|2. Verify DB Setup| PG
-    Server -->|3. Check Location Cache| Cache
-    Cache -->|4. Query Cache| Locations
+    Server -->|2. Geocode| Places
+    Places -->|3. Search| GP
+    Server -->|4. Batch Analysis| Analysis
+    Analysis -->|5. Process Reviews| OAI
+    Server -->|6. Get Recommendations| Recommender
 
-    %% Cache Miss Flow
-    Server -->|5a. If Cache Miss: Geocode| Places
-    Places -->|5b. Get Coordinates| GG
-    Places -->|6a. Search Cafes| GP
-    Places -->|6b. Store Results| Cafes
-    Server -->|6c. Update Cache| Locations
-
-    %% Analysis Flow
-    Server -->|7a. For Each Cafe| Analysis
-    Analysis -->|7b. Check Cache| Vibes
-    Analysis -->|7c. Check Cache| Amenities
-    Analysis -->|7d. If No Cache: Analyze| OAI
-    Analysis -->|7e. Store Results| Vibes
-    Analysis -->|7f. Store Results| Amenities
-
-    %% Recommendation Flow
-    Server -->|8a. Get Recommendations| Recommender
-    Recommender -->|8b. Fetch Cafes| Cafes
-    Recommender -->|8c. Get Scores| Vibes
-    Recommender -->|8d. Get Scores| Amenities
-    
     %% Response Flow
-    Server -->|9a. Generate Description| OAI
-    Server -->|9b. Stream Response| Stream
-    Stream -->|10. Update UI| Results
-
-    style UI fill:#f9f,stroke:#333,stroke-width:2px
-    style PG fill:#b5e853,stroke:#333,stroke-width:2px
-    style OAI fill:#ff9900,stroke:#333,stroke-width:2px
-    style GP fill:#4285f4,stroke:#333,stroke-width:2px
+    Server -->|7. Generate Description| OAI
+    Server -->|8. Stream Response| Stream
+    Stream -->|9. Update UI| Results
 ```
 
-### Component Details
+### Caching Strategy
 
-#### 1. Frontend Layer
-- **User Interface**: Modern SvelteKit application with TailwindCSS
-- **Search Form**: Handles user inputs for:
-  - Location (required)
-  - Mood (required)
-  - Price Range (optional)
-  - Requirements (optional)
-- **Stream Handler**: Processes server-sent events for real-time updates
-- **Results Display**: Renders cafe recommendations with animations
+```mermaid
+graph TD
+    subgraph "Cache Layers"
+        R[(Redis Cache)]
+        S[(Supabase DB)]
+    end
 
-#### 2. API Layer
-- **SvelteKit Server**: Main application server handling:
-  - Request validation
-  - Response streaming
-  - Error handling
-  - Service orchestration
+    subgraph "Cache Types"
+        LC[Location Cache]
+        AC[Analysis Cache]
+    end
 
-- **Cache Service**: Manages multiple caching strategies:
-  - Location caching (24-hour TTL)
-  - Analysis results (24-hour TTL)
-  - In-memory caching for frequent requests
-  - Database-backed persistence
+    subgraph "TTLs"
+        RT[Redis TTL: 1 hour]
+        ST[Supabase TTL: 24 hours]
+    end
 
-- **Places Service**: Handles external API interactions:
-  - Geocoding addresses
-  - Searching nearby cafes
-  - Fetching place details
-  - Review retrieval
-  - Error handling and rate limiting
+    LC -->|Check| R
+    LC -->|Fallback| S
+    AC -->|Check| R
+    AC -->|Fallback| S
 
-- **Analysis Service**: Processes cafe data:
-  - Review text preprocessing
-  - OpenAI API integration
-  - Score normalization
-  - Confidence thresholding
-  - Result caching
-
-- **Recommendation Service**: Implements ranking algorithm:
-  - Multi-factor scoring
-  - Distance calculation
-  - Price compatibility
-  - Vibe matching
-  - Amenity verification
-
-#### 3. External Services
-- **Google Places API**:
-  - Nearby Search: 5km radius, type=cafe
-  - Place Details: reviews, photos, attributes
-  - Rate limit: 100 QPS
-  
-- **Google Geocoding API**:
-  - Address to coordinates conversion
-  - Rate limit: 50 QPS
-  
-- **OpenAI GPT API**:
-  - Model: gpt-3.5-turbo
-  - Context: 3 reviews, 150 chars each
-  - Temperature: 0.7
-  - Max tokens: 300
-
-#### 4. Database Layer
-- **PostgreSQL 13+ with PostGIS**:
-  - Spatial indexing
-  - Geographic calculations
-  - Array column optimization
-  - Full-text search capabilities
-
-- **Tables**:
-  ```mermaid
-  erDiagram
-      cafes ||--o{ cafe_vibes : has
-      cafes ||--o{ cafe_amenities : has
-      cafes {
-          uuid id PK
-          text google_place_id UK
-          text name
-          geography location
-          text address
-          price_level price_level
-          timestamptz created_at
-          timestamptz updated_at
-      }
-      cafe_vibes {
-          uuid cafe_id FK
-          vibe_category[] vibe_categories
-          float[] confidence_scores
-          timestamptz last_analyzed
-      }
-      cafe_amenities {
-          uuid cafe_id FK
-          amenity_type[] amenities
-          float[] confidence_scores
-          timestamptz last_analyzed
-      }
-      location_cache {
-          text address PK
-          geography coordinates
-          timestamptz created_at
-      }
-  ```
-
-### Data Flow
-
-1. **Initial Request**:
-   ```mermaid
-   sequenceDiagram
-       participant U as User
-       participant S as Server
-       participant C as Cache
-       participant G as Google APIs
-       participant D as Database
-       
-       U->>S: 1. Submit Search
-       S->>C: 2. Check Location Cache
-       C->>D: 3. Query Cache Table
-       
-       alt Cache Hit
-           D-->>C: 4a. Return Cached Cafe IDs
-           C-->>S: 4b. Return Cached Results
-       else Cache Miss
-           S->>G: 5a. Geocode Location
-           G-->>S: 5b. Return Coordinates
-           S->>G: 6a. Search Nearby Cafes
-           G-->>S: 6b. Return Cafe List
-           S->>D: 7a. Store Cafes
-           S->>C: 7b. Update Location Cache
-       end
-   ```
-
-2. **Analysis Flow**:
-   ```mermaid
-   sequenceDiagram
-       participant S as Server
-       participant A as Analysis Service
-       participant C as Cache
-       participant O as OpenAI
-       participant D as Database
-       
-       S->>A: 1. Request Analysis
-       A->>C: 2. Check Analysis Cache
-       C->>D: 3. Query Vibes/Amenities
-       
-       alt Cache Hit
-           D-->>C: 4a. Return Cached Analysis
-           C-->>A: 4b. Return Results
-       else Cache Miss
-           A->>O: 5a. Process Reviews
-           O-->>A: 5b. Return Scores
-           A->>D: 6a. Store High Confidence
-           A->>C: 6b. Update Cache
-       end
-       A-->>S: 7. Return Analysis
-   ```
-
-3. **Recommendation Flow**:
-   ```mermaid
-   sequenceDiagram
-       participant S as Server
-       participant R as Recommender
-       participant D as Database
-       participant O as OpenAI
-       participant U as User
-       
-       S->>R: 1. Get Recommendations
-       R->>D: 2a. Fetch Cafe Data
-       R->>D: 2b. Get Vibe Scores
-       R->>D: 2c. Get Amenity Scores
-       R->>R: 3. Calculate Rankings
-       R-->>S: 4. Return Top Matches
-       S->>O: 5a. Generate Descriptions
-       O-->>S: 5b. Return Text
-       S->>U: 6. Stream Results
-   ```
-
-### Performance Optimizations
-
-1. **Database**:
-   - Spatial indexes on `location` columns
-   - B-tree indexes on `google_place_id`
-   - Array column optimization
-   - Parallel query execution
-
-2. **Caching**:
-   - Multi-level caching strategy
-   - Automatic cache invalidation
-   - Partial result caching
-   - Cache warming for popular locations
-
-3. **API Usage**:
-   - Batch requests where possible
-   - Rate limiting implementation
-   - Retry mechanisms
-   - Error handling with fallbacks
-
-4. **Query Optimization**:
-   - PostGIS function optimization
-   - Efficient joins
-   - Result limiting
-   - Index utilization
-
-## API Integrations
-
-### OpenAI GPT
-- Model: GPT-3.5-turbo
-- Purpose: Review analysis and scoring
-- Configuration:
-  - Max tokens: 300
-  - Temperature: 0.7
-  - Response format: Structured JSON
-- Example response:
-```json
-{
-  "vibe_scores": {
-    "cozy": 0.5,
-    "modern": 0.3,
-    "quiet": 0.4
-  },
-  "amenity_scores": {
-    "wifi": 0.8,
-    "outdoor_seating": 0.6,
-    "food_menu": 0.9
-  }
-}
+    R -->|Expires| RT
+    S -->|Expires| ST
 ```
 
-### Google Places API
-- Services used:
-  - Places Search API
-  - Place Details API
-  - Geocoding API
-- Features:
-  - Nearby café search
-  - Review retrieval
-  - Address geocoding
-  - Place details fetching
+1. **Redis Cache (Primary)**
+   - In-memory caching for fast access
+   - 1-hour TTL for all data
+   - Used for:
+     - Location search results
+     - Café analysis results
+     - Frequently accessed data
+
+2. **Supabase Cache (Secondary)**
+   - Persistent storage for longer retention
+   - 24-hour TTL for location cache
+   - 7-day TTL for analysis cache
+   - Used for:
+     - Backup when Redis cache misses
+     - Long-term storage of analysis results
+     - Historical data retention
+
+### Batch Processing
+
+```mermaid
+graph TD
+    subgraph "Analysis Service"
+        AB[Analysis Batching]
+        PP[Parallel Processing]
+        CR[Cache Results]
+    end
+
+    subgraph "Batch Size: 3"
+        C1[Cafe 1]
+        C2[Cafe 2]
+        C3[Cafe 3]
+    end
+
+    AB -->|Process| C1
+    AB -->|Process| C2
+    AB -->|Process| C3
+
+    C1 -->|Analyze| PP
+    C2 -->|Analyze| PP
+    C3 -->|Analyze| PP
+
+    PP -->|Store| CR
+    CR -->|Redis| Redis[(Redis)]
+    CR -->|Supabase| DB[(Supabase)]
+```
 
 ## Setup and Installation
 
 ### Prerequisites
 - Node.js 16+
 - PostgreSQL 13+ with PostGIS extension
+- Upstash Redis account
 - API keys for:
   - OpenAI GPT
   - Google Places API
-  - Supabase (for database)
+  - Supabase
+  - Upstash Redis
 
 ### Environment Variables
 
-1. Create a `.env` file in the root directory
-2. Add the following variables with your own values:
+Create a `.env` file with:
 ```env
 # Supabase Configuration
-VITE_SUPABASE_URL=https://your-project.supabase.co        # Your Supabase project URL
-VITE_SUPABASE_ANON_KEY=your-anon-key                      # Your Supabase anon key
+PUBLIC_SUPABASE_URL=your_supabase_url
+PUBLIC_SUPABASE_ANON_KEY=your_supabase_key
 
-# API Keys (Keep these secret!)
-VITE_GOOGLE_PLACES_API_KEY=your-google-places-key         # Get from Google Cloud Console
-VITE_OPENAI_API_KEY=your-openai-key                       # Get from OpenAI dashboard
+# API Keys
+GOOGLE_PLACES_API_KEY=your_google_places_key
+OPENAI_API_KEY=your_openai_key
+
+# Redis Configuration
+UPSTASH_REDIS_URL=your_redis_url
+UPSTASH_REDIS_TOKEN=your_redis_token
 ```
 
-#### Getting the API Keys:
-1. **Supabase**:
-   - Create a project at [supabase.com](https://supabase.com)
-   - Find credentials in Project Settings > API
+### Setting Up Redis Cache
 
-2. **Google Places API**:
-   - Create a project in [Google Cloud Console](https://console.cloud.google.com)
-   - Enable Places API and create credentials
-   - Add restrictions to the API key (HTTP referrers, IP addresses)
+1. Create Upstash Account:
+   - Visit [upstash.com](https://upstash.com)
+   - Sign up for free account
+   - Create new database
+   - Select closest region
+   - Copy REST URL and token
 
-3. **OpenAI API**:
-   - Sign up at [OpenAI Platform](https://platform.openai.com)
-   - Create an API key in the API Keys section
-   - Set usage limits to control costs
+2. Configure Redis:
+   - Add environment variables
+   - Install Redis client: `npm install @upstash/redis`
+   - Redis cache will initialize automatically
 
 ### Local Development
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/QuickCafe.git
-cd QuickCafe
-```
 
-2. Install dependencies:
+1. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Set up the database:
+2. Run database migrations:
 ```bash
-# Run migrations
 npm run db:migrate
 ```
 
-4. Start the development server:
+3. Start development server:
 ```bash
 npm run dev
 ```
 
-## Database Migrations
+## Performance Optimizations
 
-The project includes SQL migrations for:
-1. Creating required extensions:
-   - uuid-ossp for UUID generation
-   - postgis for geographical queries
-2. Setting up ENUM types:
-   - price_level ('$', '$$', '$$$')
-   - vibe_category (cozy, modern, quiet, etc.)
-   - amenity_type (wifi, outdoor_seating, etc.)
-3. Creating tables with proper indexes:
-   - Spatial index on café locations
-   - B-tree indexes on foreign keys
-4. Defining functions:
-   - search_nearby_cafes(lat, lng, radius, price)
-   - update_cafe_analysis(id, vibes, amenities)
-   - check_extensions()
+1. **Caching System**
+   - Two-layer cache architecture
+   - Automatic cache warming
+   - Smart TTL management
+   - Efficient cache invalidation
 
-## Testing
+2. **Batch Processing**
+   - Process reviews in batches of 3
+   - Parallel analysis within batches
+   - Efficient resource utilization
+   - Better rate limit handling
 
-The project includes comprehensive tests:
-- Unit tests for core services
-- Integration tests for API endpoints
-- Mock implementations for:
-  - OpenAI API responses
-  - Google Places API
-  - Geocoding services
-- Test coverage for:
-  - Recommendation logic
-  - Score calculation
-  - Data processing
-  - Error handling
+3. **Location Services**
+   - Google Places Autocomplete
+   - Restricted to US cities
+   - 3-mile search radius
+   - Cached geocoding results
 
-Run tests with:
-```bash
-npm test
-```
+4. **Analysis Optimization**
+   - Parallel processing
+   - Confidence thresholds
+   - Selective review analysis
+   - Cache reuse
 
-## Performance Considerations
+## API Rate Limits
 
-1. **Database Optimization**
-   - PostGIS spatial indexes for location queries
-   - Efficient array storage for scores
-   - Optimized SQL functions
-   - Proper indexing on frequently queried columns
+1. **Google Places API**
+   - Autocomplete: 100 QPS
+   - Places Search: 100 QPS
+   - Geocoding: 50 QPS
 
-2. **API Usage**
-   - Minimal token usage in OpenAI calls
-   - Selective review analysis (max 3 reviews, 150 chars each)
-   - Efficient Google Places API usage
-   - Request caching where appropriate
+2. **OpenAI API**
+   - GPT-3.5 Turbo: 3000 RPM
+   - Batch processing to optimize usage
+   - Cached results to minimize calls
 
-3. **Caching Strategy**
-   - Location caching for repeated searches
-   - Analysis results caching with 24-hour expiration
-   - High-confidence score storage
-   - Automatic cache cleanup
+3. **Redis Cache**
+   - Free tier: 10,000 commands/day
+   - 256MB storage
+   - Automatic eviction policy
 
-4. **Query Optimization**
-   - Efficient PostGIS queries
-   - Proper use of indexes
-   - Optimized joins
-   - Result limiting
+4. **Supabase**
+   - Database: 500MB storage
+   - Rate limit: 50,000 rows/day
+   - Cache table auto-cleanup
 
 ## Contributing
 
