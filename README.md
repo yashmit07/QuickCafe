@@ -1,6 +1,6 @@
-# QuickCafé
+# QuickCafe
 
-QuickCafé is an AI-powered café discovery platform that helps users find the perfect coffee spot based on their preferences. By combining OpenAI's GPT API for intelligent analysis, Google Places API for real café data, and a multi-layer caching system, it delivers personalized café suggestions with detailed atmosphere and amenity analysis.
+A smart café recommendation system that helps users find the perfect café based on their mood, requirements, and location.
 
 ## Features
 
@@ -34,54 +34,79 @@ QuickCafé is an AI-powered café discovery platform that helps users find the p
 
 ```mermaid
 graph TD
-    subgraph "Frontend Layer"
+    subgraph "Frontend"
         UI[User Interface]
         Form[Search Form]
-        AC[Places Autocomplete]
         Results[Results Display]
-        Stream[Stream Handler]
     end
 
-    subgraph "API Layer"
+    subgraph "Backend Services"
         Server[SvelteKit Server]
-        Cache[Cache Service]
-        Places[Places Service]
-        Analysis[Analysis Service]
-        Recommender[Recommendation Service]
+        PS[Places Service]
+        RS[Recommendation Service]
+        AS[Analysis Service]
+        CS[Cache Service]
     end
 
-    subgraph "Cache Layer"
-        Redis[(Redis Cache)]
-        Supabase[(Supabase DB)]
-    end
-
-    subgraph "External Services"
+    subgraph "External APIs"
         GP[Google Places API]
-        GG[Google Geocoding API]
-        OAI[OpenAI GPT API]
+        OAI[OpenAI GPT-3.5]
     end
 
-    %% Frontend Flow
-    Form --> AC
-    AC --> Places
-    Form -->|Submit Search| Server
+    subgraph "Data Storage"
+        Redis[(Redis Cache)]
+        DB[(Supabase DB)]
+    end
 
-    %% Cache Flow
-    Server -->|1. Check Cache| Cache
-    Cache -->|Fast Access| Redis
-    Cache -->|Persistent Storage| Supabase
-
-    %% Main Processing Flow
-    Server -->|2. Geocode| Places
-    Places -->|3. Search| GP
-    Server -->|4. Batch Analysis| Analysis
-    Analysis -->|5. Process Reviews| OAI
-    Server -->|6. Get Recommendations| Recommender
-
-    %% Response Flow
+    %% User Flow
+    UI --> Form
+    Form -->|1. Submit| Server
+    Server -->|2. Geocode| PS
+    PS -->|3. Places API| GP
+    Server -->|4. Check Cache| CS
+    CS -->|5a. Cache Hit| Redis
+    CS -->|5b. Cache Miss| DB
+    Server -->|6. Analyze| AS
+    AS -->|6a. GPT API| OAI
     Server -->|7. Generate Description| OAI
     Server -->|8. Stream Response| Stream
     Stream -->|9. Update UI| Results
+```
+
+### Database Schema
+
+```sql
+-- Core Tables
+cafes (
+    id UUID PRIMARY KEY,
+    google_place_id TEXT UNIQUE,
+    name TEXT,
+    location GEOGRAPHY(POINT, 4326),
+    address TEXT,
+    price_level ENUM('$', '$$', '$$$'),
+    reviews JSONB[],
+    last_review_fetch TIMESTAMPTZ
+)
+
+cafe_amenities (
+    cafe_id UUID REFERENCES cafes(id),
+    amenity ENUM('wifi', 'outdoor_seating', 'power_outlets', 'pet_friendly', 'parking', 'workspace_friendly', 'food_menu'),
+    confidence_score DECIMAL(4,3),
+    last_analyzed TIMESTAMPTZ
+)
+
+cafe_vibes (
+    cafe_id UUID REFERENCES cafes(id),
+    vibe_category ENUM('cozy', 'modern', 'quiet', 'lively', 'artistic', 'traditional', 'industrial'),
+    confidence_score DECIMAL(4,3),
+    last_analyzed TIMESTAMPTZ
+)
+
+location_cache (
+    search_location TEXT PRIMARY KEY,
+    cafe_ids UUID[],
+    last_updated TIMESTAMPTZ
+)
 ```
 
 ### Scoring System
@@ -149,63 +174,14 @@ graph TD
     S -->|Expires| ST
 ```
 
-1. **Redis Cache (Primary)**
-   - In-memory caching for fast access
-   - 1-hour TTL for all data
-   - Coordinate-based cache keys
-   - Price-level segmentation
-   - Used for:
-     - Location search results
-     - Café analysis results
-     - Frequently accessed data
-
-2. **Supabase Cache (Secondary)**
-   - Persistent storage for longer retention
-   - 24-hour TTL for location cache
-   - 7-day TTL for analysis cache
-   - Matching cache key strategy
-   - Used for:
-     - Backup when Redis cache misses
-     - Long-term storage of analysis results
-     - Historical data retention
-
-### Batch Processing
-
-```mermaid
-graph TD
-    subgraph "Analysis Service"
-        AB[Analysis Batching]
-        PP[Parallel Processing]
-        CR[Cache Results]
-    end
-
-    subgraph "Batch Size: 3"
-        C1[Cafe 1]
-        C2[Cafe 2]
-        C3[Cafe 3]
-    end
-
-    AB -->|Process| C1
-    AB -->|Process| C2
-    AB -->|Process| C3
-
-    C1 -->|Analyze| PP
-    C2 -->|Analyze| PP
-    C3 -->|Analyze| PP
-
-    PP -->|Store| CR
-    CR -->|Redis| Redis[(Redis)]
-    CR -->|Supabase| DB[(Supabase)]
-```
-
 ## Setup and Installation
 
 ### Prerequisites
-- Node.js 16+
+- Node.js 20.x (required for deployment)
 - PostgreSQL 13+ with PostGIS extension
 - Upstash Redis account
 - API keys for:
-  - OpenAI GPT
+  - OpenAI GPT-3.5
   - Google Places API
   - Supabase
   - Upstash Redis
@@ -260,6 +236,43 @@ npm run db:migrate
 ```bash
 npm run dev
 ```
+
+### Testing
+
+The project includes comprehensive test coverage:
+
+```bash
+# Run all tests
+npm test
+
+# Run tests with UI
+npm run test:ui
+
+# Run coverage report
+npm run test:coverage
+
+# Run single test file
+npm run test:single
+```
+
+### Deployment
+
+The project is configured for deployment on Vercel:
+
+1. Node.js Version:
+   - Uses Node.js 20.x (specified in package.json)
+   - Configured in `.nvmrc` file
+   - Vercel deployment uses this version automatically
+
+2. Adapter Configuration:
+   - Uses `@sveltejs/adapter-vercel`
+   - Configured for server-side rendering
+   - Optimized for edge functions
+
+3. Environment Setup:
+   - Add all environment variables in Vercel dashboard
+   - Configure project settings if needed
+   - Enable automatic deployments from main branch
 
 ## Performance Optimizations
 
@@ -317,6 +330,26 @@ npm run dev
    - Database: 500MB storage
    - Rate limit: 50,000 rows/day
    - Cache table auto-cleanup
+
+## Troubleshooting
+
+1. **Deployment Issues**
+   - Ensure Node.js 20.x is specified in package.json
+   - Check all environment variables are set in Vercel
+   - Verify database migrations have run
+   - Check Redis connection is active
+
+2. **Database Issues**
+   - Verify PostGIS extension is enabled
+   - Check database connection string
+   - Ensure all migrations have run
+   - Verify table permissions
+
+3. **Cache Issues**
+   - Check Redis connection
+   - Verify cache keys format
+   - Monitor cache hit/miss rates
+   - Check TTL settings
 
 ## Contributing
 
