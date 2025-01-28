@@ -41,12 +41,24 @@ npm run dev
 graph TD
     A[Browser] -->|1. Search Request| B[SvelteKit Server]
     B -->|2. Check Cache| C[Redis]
-    C -->|3. Cache Hit/Miss| B
-    B -->|4. If Cache Miss| D[Google Places API]
-    D -->|5. Café Data| B
-    B -->|6. Store Cafes| E[Postgres]
-    B -->|7. Get/Store Analysis| F[OpenAI API]
-    B -->|8. Stream Results| A
+    C -->|3a. Return Cached IDs| B
+    C -->|3b. Cache Miss| B
+    B -->|4. Search Cafes| D[Google Places API]
+    D -->|5. Return Cafe Data| B
+    B -->|6a. Store New Cafes| E[Postgres]
+    B -->|6b. Check Existing Analysis| E
+    E -->|7a. Return Analysis| B
+    B -->|7b. Missing Analysis| F[OpenAI API]
+    F -->|8. Return Analysis| B
+    B -->|9. Store Analysis| E
+    B -->|10. Stream Results| A
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333,stroke-width:2px
+    style C fill:#dfd,stroke:#333,stroke-width:2px
+    style D fill:#fdd,stroke:#333,stroke-width:2px
+    style E fill:#dfd,stroke:#333,stroke-width:2px
+    style F fill:#fdd,stroke:#333,stroke-width:2px
 ```
 
 ### Database Schema
@@ -138,25 +150,94 @@ const finalScore = (
 ).toFixed(2)
 ```
 
-## 📡 API Reference
+## �� API Reference
 
-### POST /api/getRecommendation
+### Endpoint: `/api/getRecommendation`
+
+**Method**: `POST`
+
+**Request Body**:
 ```typescript
-interface CafeRequest {
-  location: string;     // e.g., "San Francisco, CA"
-  mood: VibeCategory;  // "cozy" | "modern" | "quiet" | "lively" | "artistic" | "traditional" | "industrial"
-  priceRange?: string; // "$" | "$$" | "$$$"
-  requirements?: AmenityType[]; // ["wifi", "outdoor_seating", etc.]
+{
+  // The location to search for cafes
+  location: "San Francisco, CA",
+  
+  // The desired vibe/mood of the cafe
+  mood: "cozy" | "modern" | "quiet" | "lively" | "artistic" | "traditional" | "industrial",
+  
+  // Optional: Price range filter
+  priceRange?: "$" | "$$" | "$$$",
+  
+  // Optional: Required amenities
+  requirements?: [
+    "wifi",
+    "outdoor_seating",
+    "power_outlets",
+    "pet_friendly",
+    "parking",
+    "workspace_friendly",
+    "food_menu"
+  ]
+}
+```
+
+**Response**: Stream of cafe recommendations, each separated by `###`
+
+```typescript
+// Each recommendation in the stream follows this format:
+{
+  // Name of the cafe
+  name: "Cafe Example",
+  
+  // AI-generated description based on reviews and analysis
+  description: "A cozy corner cafe with modern decor...",
+  
+  // List of notable features and amenities
+  features: [
+    "Strong wifi connection",
+    "Plenty of power outlets",
+    "Quiet atmosphere"
+  ],
+  
+  // AI-generated summary of ideal use cases
+  bestFor: "Perfect for focused work sessions or quiet meetings",
+  
+  // Distance from requested location in meters
+  distance: 750,
+  
+  // Calculated match score (0-100)
+  matchScore: 85.5
+}
+```
+
+**Example Usage**:
+```typescript
+const response = await fetch('/api/getRecommendation', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    location: "San Francisco, CA",
+    mood: "cozy",
+    priceRange: "$$",
+    requirements: ["wifi", "power_outlets"]
+  })
+});
+
+// Response is streamed, so we need to read it chunk by chunk
+const reader = response.body.getReader();
+let recommendations = '';
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  recommendations += new TextDecoder().decode(value);
 }
 
-interface CafeResponse {
-  name: string;
-  description: string;
-  features: string[];
-  bestFor: string;
-  distance: number;
-  matchScore: number;
-}
+// Split recommendations by separator
+const cafeList = recommendations
+  .split('###')
+  .filter(text => text.trim())
+  .map(text => parseRecommendation(text));
 ```
 
 ## 🔧 Development
