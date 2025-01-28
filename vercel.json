@@ -4,5 +4,15 @@
 		"source": "/github",
 		"destination": "https://github.com/yashmit07/quickcafe"
 	  }
+	],
+	"version": 2,
+	"builds": [
+	  {
+		"src": "package.json",
+		"use": "@vercel/node@20",
+		"config": {
+		  "nodeVersion": "20"
+		}
+	  }
 	]
   }
