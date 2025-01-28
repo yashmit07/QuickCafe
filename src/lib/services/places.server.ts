@@ -1,6 +1,5 @@
-// src/lib/services/places.ts
-import type { Cafe } from '$lib/types/database'
 import { GOOGLE_PLACES_API_KEY } from '$env/static/private'
+import type { Cafe } from '$lib/types/database'
 import { supabase } from '$lib/db/supabase'
 
 type PriceLevel = '$' | '$$' | '$$$' | null;
@@ -36,7 +35,7 @@ interface GooglePlaceDetails extends GooglePlace {
     }[];
 }
 
-export class PlacesService {
+export class PlacesServerService {
     private readonly GEOCODING_API_BASE = 'https://maps.googleapis.com/maps/api/geocode'
     private readonly PLACES_API_BASE = 'https://maps.googleapis.com/maps/api/place'
     private readonly PLACE_DETAILS_FIELDS = [
@@ -141,13 +140,10 @@ export class PlacesService {
         return places.filter((place): place is Cafe => place !== null);
     }
 
-    /**
-     * Get detailed information about a specific place and transform to our format
-     */
     private async getPlaceDetails(place: GooglePlace): Promise<Cafe | null> {
         try {
-            const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,geometry,formatted_address,price_level,reviews,opening_hours,photos&key=${GOOGLE_PLACES_API_KEY}`;
-            const response = await fetch(detailsUrl);
+            const detailsUrl = `${this.PLACES_API_BASE}/details/json?place_id=${place.place_id}&fields=name,geometry,formatted_address,price_level,reviews,opening_hours,photos&key=${GOOGLE_PLACES_API_KEY}`;
+            const response = await this.retryableRequest(detailsUrl);
             const data = await response.json();
             
             if (data.status !== 'OK' || !data.result) {
@@ -173,7 +169,7 @@ export class PlacesService {
             // Process photos
             const photos = await Promise.all(
                 (details.photos || []).slice(0, 3).map(async photo => {
-                    const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${photo.width}&photoreference=${photo.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
+                    const photoUrl = `${this.PLACES_API_BASE}/photo?maxwidth=${photo.width}&photoreference=${photo.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
                     return {
                         url: photoUrl,
                         width: photo.width,
@@ -195,25 +191,7 @@ export class PlacesService {
                 last_review_fetch: new Date().toISOString()
             };
 
-            // Update or insert cafe
-            const { data: existingCafe } = await supabase
-                .from('cafes')
-                .select('id')
-                .eq('google_place_id', place.place_id)
-                .single();
-
-            if (existingCafe) {
-                await supabase
-                    .from('cafes')
-                    .update(cafe)
-                    .eq('id', existingCafe.id);
-                return { ...cafe, id: existingCafe.id };
-            } else {
-                await supabase
-                    .from('cafes')
-                    .insert(cafe);
-                return cafe;
-            }
+            return cafe;
         } catch (error) {
             console.error('Error processing place:', error);
             return null;
@@ -228,4 +206,4 @@ export class PlacesService {
             default: return null;
         }
     }
-}
+} 

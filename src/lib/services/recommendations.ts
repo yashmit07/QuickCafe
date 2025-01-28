@@ -64,19 +64,18 @@ export class RecommendationService {
         lat: number,
         lng: number,
         request: CafeRequest,
-        limit: number = 5
+        limit: number = 20
     ): Promise<ScoredCafe[]> {
         try {
             console.log('Getting recommendations for:', { lat, lng, request, limit });
 
-            // Search for nearby cafes with pagination
-            const { data: cafes, error } = await supabase.rpc('search_nearby_cafes', {
+            // Search for nearby cafes
+            const { data: cafes, error } = await supabase.rpc('find_cafes_v2', {
                 search_lat: lat,
                 search_lng: lng,
                 radius_meters: 5000,
                 price_filter: request.priceRange || null,
-                page_size: Math.min(20, limit * 2), // Get a reasonable sample size for ranking
-                page_number: 1
+                page_size: limit
             });
 
             if (error) {
@@ -92,100 +91,83 @@ export class RecommendationService {
             console.log(`Found ${cafes.length} nearby cafes:`, cafes.map((c: any) => ({
                 id: c.id,
                 name: c.name,
-                price: c.price_level,
                 distance: c.distance
             })));
 
-            // Process and rank cafes
-            const scoredCafes: ScoredCafe[] = cafes.map((cafe: {
-                id: string;
-                google_place_id: string;
-                name: string;
-                location: string;
-                address: string;
-                distance: number;
-                price_level: PriceLevel;
-                reviews: any[];
-                last_review_fetch: string;
-                vibe_scores: Record<VibeCategory, number>;
-                amenity_scores: Record<AmenityType, number>;
-            }) => {
-                // Check if cafe has scores
-                const hasScores = cafe.vibe_scores && 
-                    Object.keys(cafe.vibe_scores).length > 0 && 
-                    cafe.amenity_scores && 
-                    Object.keys(cafe.amenity_scores).length > 0;
+            // Convert to ScoredCafe type and calculate scores
+            const scoredCafes: ScoredCafe[] = cafes.map((cafe: any) => ({
+                ...cafe,
+                vibe_scores: cafe.vibe_scores || {},
+                amenity_scores: cafe.amenity_scores || {},
+                _score: this.calculateScore(
+                    cafe,
+                    request.mood,
+                    request.requirements,
+                    cafe.distance,
+                    request.priceRange
+                )
+            }));
 
-                console.log(`Processing cafe ${cafe.name} (${cafe.id}):`, {
-                    hasScores,
-                    price: cafe.price_level,
-                    distance: cafe.distance,
-                    vibeScores: cafe.vibe_scores,
-                    amenityScores: cafe.amenity_scores
-                });
-
-                // If no scores, use default scores
-                if (!hasScores) {
-                    console.log(`No scores found for cafe ${cafe.id}, using defaults`);
-                    return {
-                        ...cafe,
-                        distance: cafe.distance,
-                        vibe_scores: {
-                            cozy: 0.5,
-                            modern: 0.5,
-                            quiet: 0.5,
-                            lively: 0.5,
-                            artistic: 0.5,
-                            traditional: 0.5,
-                            industrial: 0.5
-                        } satisfies Record<VibeCategory, number>,
-                        amenity_scores: {
-                            wifi: 0.5,
-                            outdoor_seating: 0.5,
-                            power_outlets: 0.5,
-                            pet_friendly: 0.5,
-                            parking: 0.5,
-                            workspace_friendly: 0.5,
-                            food_menu: 0.5
-                        } satisfies Record<AmenityType, number>
-                    };
-                }
-
-                return {
-                    ...cafe,
-                    distance: cafe.distance,
-                    vibe_scores: cafe.vibe_scores as Record<VibeCategory, number>,
-                    amenity_scores: cafe.amenity_scores as Record<AmenityType, number>
-                };
-            });
-
-            // Rank cafes based on scores
-            const rankedCafes = this.rankCafes(scoredCafes, request);
-            console.log(`Ranked ${rankedCafes.length} cafes:`, rankedCafes.map(c => ({
-                name: c.name,
-                score: c._score,
-                price: c.price_level,
-                distance: c.distance
-            })));
-
-            // Return top results
-            const topCafes = rankedCafes.slice(0, limit);
-            console.log(`Returning top ${topCafes.length} cafes:`, topCafes.map(c => ({
-                name: c.name,
-                score: c._score,
-                price: c.price_level,
-                distance: c.distance
-            })));
-
-            if (topCafes.length === 0) {
-                throw new Error('No cafes match your preferences');
-            }
-
-            return topCafes;
+            // Sort by score and return results
+            return scoredCafes.sort((a, b) => (b._score || 0) - (a._score || 0));
         } catch (error) {
-            console.error('Error in getRecommendations:', error);
+            console.error('Error getting recommendations:', error);
             throw error;
         }
+    }
+
+    private calculateScore(
+        cafe: any,
+        targetMood: string,
+        requirements: string[],
+        distance: number,
+        priceRange?: string
+    ): number {
+        // Calculate vibe score
+        const vibeScore = cafe.vibe_scores[targetMood] || 0;
+
+        // Calculate amenity score (average of required amenities)
+        const amenityScores = requirements.map(req => cafe.amenity_scores[req] || 0);
+        const amenityScore = amenityScores.length
+            ? amenityScores.reduce((a, b) => a + b, 0) / amenityScores.length
+            : 1; // If no requirements, give full score
+
+        // Calculate distance score (inverse relationship - closer is better)
+        const distanceScore = Math.max(0, 1 - (distance / this.MAX_PREFERRED_DISTANCE));
+
+        // Calculate price score (exact match = 1, one level difference = 0.5, otherwise 0)
+        const priceScore = this.calculatePriceScore(cafe.price_level, priceRange);
+
+        // Calculate final weighted score
+        return (
+            this.WEIGHTS.vibe * vibeScore +
+            this.WEIGHTS.amenity * amenityScore +
+            this.WEIGHTS.distance * distanceScore +
+            this.WEIGHTS.price * priceScore
+        );
+    }
+
+    /**
+     * Calculate how well cafe price matches user preference
+     */
+    private calculatePriceScore(cafePrice: string | null, targetPrice?: string): number {
+        if (!targetPrice || !cafePrice) return 1; // If no price preference, give full score
+
+        const priceToNumber = (price: string): number => {
+            switch (price) {
+                case '$': return 1;
+                case '$$': return 2;
+                case '$$$': return 3;
+                default: return 0;
+            }
+        };
+
+        const cafePriceNum = priceToNumber(cafePrice);
+        const targetPriceNum = priceToNumber(targetPrice);
+        const priceDiff = Math.abs(cafePriceNum - targetPriceNum);
+
+        // Exact match = 1, one level difference = 0.5, otherwise 0
+        return priceDiff === 0 ? 1 : priceDiff === 1 ? 0.5 : 0;
     }
 
     private processVibeScores(vibeData: VibeScore[]): Record<VibeCategory, number> {
@@ -221,8 +203,7 @@ export class RecommendationService {
         const scores = {
             vibe: this.calculateVibeScore(cafe.vibe_scores, request.mood),
             amenity: this.calculateAmenityScore(cafe.amenity_scores, request.requirements),
-            distance: this.calculateDistanceScore(cafe.distance),
-            price: this.calculatePriceScore(cafe.price_level, request.priceRange)
+            distance: this.calculateDistanceScore(cafe.distance)
         };
 
         return Object.entries(scores)
@@ -237,11 +218,18 @@ export class RecommendationService {
         vibeScores: Record<VibeCategory, number>,
         mood: string
     ): number {
-        const desiredVibes = this.VIBE_MAPPINGS[mood.toLowerCase()] || [];
-        if (!desiredVibes.length) return 0.5;
+        // Direct match with the selected mood
+        const directScore = vibeScores[mood.toLowerCase() as VibeCategory] || 0;
+        
+        // Also check mapped vibes if they exist
+        const mappedVibes = this.VIBE_MAPPINGS[mood.toLowerCase()] || [];
+        const mappedScores = mappedVibes.map(vibe => vibeScores[vibe] || 0);
+        const mappedScore = mappedScores.length 
+            ? mappedScores.reduce((sum, score) => sum + score, 0) / mappedScores.length
+            : 0;
 
-        const scores = desiredVibes.map(vibe => vibeScores[vibe] || 0);
-        return scores.reduce((sum, score) => sum + score, 0) / desiredVibes.length;
+        // Use the better of the two scores
+        return Math.max(directScore, mappedScore);
     }
 
     /**
@@ -264,23 +252,5 @@ export class RecommendationService {
      */
     private calculateDistanceScore(distanceMeters: number): number {
         return Math.max(0, 1 - (distanceMeters / this.MAX_PREFERRED_DISTANCE));
-    }
-
-    /**
-     * Calculate price match score
-     */
-    private calculatePriceScore(cafePrice: PriceLevel, targetPrice: string | undefined): number {
-        if (!cafePrice || !targetPrice) return 0.5;
-        
-        // Convert price levels to numbers for comparison
-        const priceToNum = (price: string): number => price.length;
-        const cafeNum = priceToNum(cafePrice);
-        const targetNum = priceToNum(targetPrice);
-        
-        // Calculate score based on price difference
-        const diff = Math.abs(cafeNum - targetNum);
-        if (diff === 0) return 1;
-        if (diff === 1) return 0.5;
-        return 0;
     }
 }

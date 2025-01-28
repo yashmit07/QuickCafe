@@ -11,9 +11,9 @@ export type AmenityType =
 
 export interface CafeRequest {
     mood: string
-    priceRange: string
     location: string
     requirements: string[]
+    priceRange?: string
 }
 
 export interface Cafe {
@@ -24,5 +24,45 @@ export interface Cafe {
     address: string
     price_level: PriceLevel
     reviews: any[]
+    operating_hours: {
+        [day: string]: {
+            open: string
+            close: string
+        }
+    } | null
+    photos: {
+        url: string
+        width: number
+        height: number
+    }[]
     last_review_fetch: string
+    created_at?: string
+    updated_at?: string
+}
+
+export interface CafeVibe {
+    cafe_id: string
+    vibe_category: VibeCategory
+    confidence_score: number
+    last_analyzed: string
+}
+
+export interface CafeAmenity {
+    cafe_id: string
+    amenity: AmenityType
+    confidence_score: number
+    last_analyzed: string
+}
+
+export interface LocationCache {
+    search_location: string
+    cafe_ids: string[]
+    last_updated: string
+}
+
+export interface ScoredCafe extends Cafe {
+    distance: number
+    vibe_scores: Record<VibeCategory, number>
+    amenity_scores: Record<AmenityType, number>
+    _score?: number
 }

@@ -7,13 +7,13 @@ QuickCafé is an AI-powered café discovery platform that helps users find the p
 - 🎯 Intelligent café matching based on:
   - Mood preferences (cozy, modern, quiet, lively, artistic, traditional, industrial)
   - Required amenities (WiFi, outdoor seating, power outlets, etc.)
-  - Price range preferences ($, $$, $$$)
-  - Location proximity with 3-mile radius
+  - Smart price matching (exact match = 100%, one level difference = 50%)
+  - Location proximity with weighted scoring
 - 📍 Location-aware recommendations using:
   - Google Places Autocomplete for city selection
   - Geocoding API for coordinates conversion
   - PostGIS for efficient geographical queries
-  - Multi-layer location caching
+  - Coordinate-based caching with 11m precision
 - 🤖 AI-powered analysis using OpenAI GPT-3.5:
   - Batch processing for review analysis
   - Parallel processing for better performance
@@ -21,6 +21,8 @@ QuickCafé is an AI-powered café discovery platform that helps users find the p
 - 💨 High-performance caching system:
   - Redis for fast in-memory caching
   - Supabase for persistent storage
+  - Price-aware caching strategy
+  - Coordinate-based cache keys
   - Automatic cache invalidation
   - Cache warming for popular locations
 - 🔄 Real-time data streaming with server-sent events
@@ -82,6 +84,41 @@ graph TD
     Stream -->|9. Update UI| Results
 ```
 
+### Scoring System
+
+```mermaid
+graph TD
+    subgraph "Score Components"
+        V[Vibe Score: 40%]
+        A[Amenity Score: 30%]
+        D[Distance Score: 20%]
+        P[Price Score: 10%]
+    end
+
+    subgraph "Price Scoring"
+        EM[Exact Match: 100%]
+        OD[One Level Diff: 50%]
+        TD[Two+ Level Diff: 0%]
+    end
+
+    subgraph "Distance Scoring"
+        DS[Distance Score]
+        MD[Max Distance: 2km]
+    end
+
+    V -->|Weight| TS[Total Score]
+    A -->|Weight| TS
+    D -->|Weight| TS
+    P -->|Weight| TS
+
+    P --> EM
+    P --> OD
+    P --> TD
+
+    D --> DS
+    DS -->|Inverse| MD
+```
+
 ### Caching Strategy
 
 ```mermaid
@@ -91,9 +128,10 @@ graph TD
         S[(Supabase DB)]
     end
 
-    subgraph "Cache Types"
-        LC[Location Cache]
-        AC[Analysis Cache]
+    subgraph "Cache Keys"
+        CK["{lat},{lng}:{radius}:{price}"]
+        CP[Coordinate Precision: 4 decimals]
+        PR[Price Level Segmentation]
     end
 
     subgraph "TTLs"
@@ -101,10 +139,11 @@ graph TD
         ST[Supabase TTL: 24 hours]
     end
 
-    LC -->|Check| R
-    LC -->|Fallback| S
-    AC -->|Check| R
-    AC -->|Fallback| S
+    CK -->|Format| CP
+    CK -->|Include| PR
+    
+    CK -->|Store In| R
+    CK -->|Store In| S
 
     R -->|Expires| RT
     S -->|Expires| ST
@@ -113,6 +152,8 @@ graph TD
 1. **Redis Cache (Primary)**
    - In-memory caching for fast access
    - 1-hour TTL for all data
+   - Coordinate-based cache keys
+   - Price-level segmentation
    - Used for:
      - Location search results
      - Café analysis results
@@ -122,6 +163,7 @@ graph TD
    - Persistent storage for longer retention
    - 24-hour TTL for location cache
    - 7-day TTL for analysis cache
+   - Matching cache key strategy
    - Used for:
      - Backup when Redis cache misses
      - Long-term storage of analysis results
@@ -172,17 +214,20 @@ graph TD
 
 Create a `.env` file with:
 ```env
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_key
+
 # Supabase Configuration
 PUBLIC_SUPABASE_URL=your_supabase_url
 PUBLIC_SUPABASE_ANON_KEY=your_supabase_key
 
-# API Keys
-GOOGLE_PLACES_API_KEY=your_google_places_key
-OPENAI_API_KEY=your_openai_key
-
 # Redis Configuration
 UPSTASH_REDIS_URL=your_redis_url
 UPSTASH_REDIS_TOKEN=your_redis_token
+
+# Google Places API
+GOOGLE_PLACES_API_KEY=your_google_places_key
+PUBLIC_GOOGLE_PLACES_API_KEY=your_google_places_key
 ```
 
 ### Setting Up Redis Cache
@@ -220,20 +265,29 @@ npm run dev
 
 1. **Caching System**
    - Two-layer cache architecture
+   - Coordinate-based cache keys
+   - Price-level segmentation
+   - 4-decimal coordinate precision (11m)
    - Automatic cache warming
    - Smart TTL management
    - Efficient cache invalidation
 
-2. **Batch Processing**
-   - Process reviews in batches of 3
-   - Parallel analysis within batches
-   - Efficient resource utilization
-   - Better rate limit handling
+2. **Recommendation Engine**
+   - Weighted scoring system:
+     - Vibe matching (40%)
+     - Amenity matching (30%)
+     - Distance scoring (20%)
+     - Price matching (10%)
+   - Smart price matching:
+     - Exact match = 100%
+     - One level difference = 50%
+     - Two+ levels difference = 0%
+   - Distance-based scoring up to 2km
 
 3. **Location Services**
    - Google Places Autocomplete
    - Restricted to US cities
-   - 3-mile search radius
+   - Coordinate-based caching
    - Cached geocoding results
 
 4. **Analysis Optimization**

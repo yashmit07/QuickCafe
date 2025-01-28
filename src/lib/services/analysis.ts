@@ -15,26 +15,33 @@ export class AnalysisService {
 
     private async saveAnalysisToDatabase(cafeId: string, analysis: any) {
         try {
-            // Filter and prepare vibe scores
+            const timestamp = new Date().toISOString();
+            
+            // Prepare vibe scores
             if (analysis.vibe_scores) {
                 console.log('Filtering and saving vibe scores for cafe:', cafeId);
-                const highConfidenceVibes = Object.entries(analysis.vibe_scores)
-                    .filter(([_, score]) => (score as number) > 0.4);
+                const vibeScores = Object.entries(analysis.vibe_scores)
+                    .filter(([_, score]) => (score as number) > 0.4)
+                    .map(([category, score]) => ({
+                        cafe_id: cafeId,
+                        vibe_category: category,
+                        confidence_score: score,
+                        last_analyzed: timestamp
+                    }));
 
-                if (highConfidenceVibes.length > 0) {
-                    const vibeCategories = highConfidenceVibes.map(([category]) => category);
-                    const vibeScores = highConfidenceVibes.map(([_, score]) => score);
+                if (vibeScores.length > 0) {
+                    console.log('High confidence vibes to insert:', vibeScores);
                     
-                    console.log('High confidence vibes to insert:', { vibeCategories, vibeScores });
-                    
+                    // Delete existing vibes first
+                    await supabase
+                        .from('cafe_vibes')
+                        .delete()
+                        .eq('cafe_id', cafeId);
+
+                    // Insert new vibes
                     const { error: vibeError } = await supabase
                         .from('cafe_vibes')
-                        .upsert({
-                            cafe_id: cafeId,
-                            vibe_categories: vibeCategories,
-                            confidence_scores: vibeScores,
-                            last_analyzed: new Date().toISOString()
-                        });
+                        .insert(vibeScores);
                         
                     if (vibeError) {
                         console.error('Error saving vibe scores:', vibeError);
@@ -44,26 +51,31 @@ export class AnalysisService {
                 }
             }
 
-            // Filter and prepare amenity scores
+            // Prepare amenity scores
             if (analysis.amenity_scores) {
                 console.log('Filtering and saving amenity scores for cafe:', cafeId);
-                const highConfidenceAmenities = Object.entries(analysis.amenity_scores)
-                    .filter(([_, score]) => (score as number) > 0.5);
+                const amenityScores = Object.entries(analysis.amenity_scores)
+                    .filter(([_, score]) => (score as number) > 0.5)
+                    .map(([amenity, score]) => ({
+                        cafe_id: cafeId,
+                        amenity: amenity,
+                        confidence_score: score,
+                        last_analyzed: timestamp
+                    }));
 
-                if (highConfidenceAmenities.length > 0) {
-                    const amenityTypes = highConfidenceAmenities.map(([amenity]) => amenity);
-                    const amenityScores = highConfidenceAmenities.map(([_, score]) => score);
+                if (amenityScores.length > 0) {
+                    console.log('High confidence amenities to insert:', amenityScores);
                     
-                    console.log('High confidence amenities to insert:', { amenityTypes, amenityScores });
-                    
+                    // Delete existing amenities first
+                    await supabase
+                        .from('cafe_amenities')
+                        .delete()
+                        .eq('cafe_id', cafeId);
+
+                    // Insert new amenities
                     const { error: amenityError } = await supabase
                         .from('cafe_amenities')
-                        .upsert({
-                            cafe_id: cafeId,
-                            amenities: amenityTypes,
-                            confidence_scores: amenityScores,
-                            last_analyzed: new Date().toISOString()
-                        });
+                        .insert(amenityScores);
                         
                     if (amenityError) {
                         console.error('Error saving amenity scores:', amenityError);

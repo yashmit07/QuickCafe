@@ -1,4 +1,5 @@
 <script lang="ts">
+  import '../app.css';
   import Form from '$lib/Form.svelte';
   import LoadingCard from '$lib/LoadingCard.svelte';
   import RecommendationCard from '$lib/RecommendationCard.svelte';
@@ -156,3 +157,9 @@
 
   <Footer />
 </div>
+
+<style>
+  :global(html) {
+    background-color: #f9fafb;
+  }
+</style>

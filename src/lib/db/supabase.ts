@@ -47,7 +47,7 @@ export async function verifyDatabaseSetup() {
 
         // Check if functions exist
         const { data: searchResult, error: searchError } = await supabase
-            .rpc('search_nearby_cafes', {
+            .rpc('find_cafes_v2', {
                 search_lat: 0,
                 search_lng: 0,
                 radius_meters: 1,
@@ -56,7 +56,7 @@ export async function verifyDatabaseSetup() {
 
         if (searchError && !searchError.message.includes('No cafes found')) {
             console.error('Error checking search function:', searchError);
-            throw new Error('Required database function search_nearby_cafes is not properly set up');
+            throw new Error('Required database function find_cafes_v2 is not properly set up');
         }
 
         console.log('Database setup verified successfully');

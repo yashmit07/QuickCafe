@@ -1,15 +1,80 @@
+/// <reference types="@types/google.maps" />
 <script lang="ts">
-  /// <reference types="@types/google.maps" />
   import { createEventDispatcher } from 'svelte';
   import LoadingIndicator from './Loading.svelte';
+  import { onMount } from 'svelte';
+  import { PlacesClientService } from './services/places.client';
+  import { browser } from '$app/environment';
 
   export let mood = '';
-  export let priceRange = '';
   export let location = '';
+  export let priceRange = '';
   export let requirements: string[] = [];
   export let loading = false;
 
   const dispatch = createEventDispatcher();
+
+  let locationInput: HTMLInputElement;
+  let locationError = '';
+  let autocomplete: google.maps.places.Autocomplete | null = null;
+  let placesService: PlacesClientService;
+
+  onMount(() => {
+    // Initialize PlacesService
+    placesService = new PlacesClientService();
+
+    // Initialize Google Places Autocomplete
+    const checkGoogleMapsLoaded = setInterval(() => {
+      if (browser && window.google && window.google.maps && locationInput) {
+        clearInterval(checkGoogleMapsLoaded);
+        
+        const options = {
+          types: ['(cities)'],
+          fields: ['formatted_address', 'geometry', 'name']
+        };
+        
+        autocomplete = new google.maps.places.Autocomplete(locationInput, options);
+        
+        // Update location when user selects a place
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete?.getPlace();
+          if (place?.formatted_address) {
+            location = place.formatted_address;
+            locationError = '';
+          }
+        });
+      }
+    }, 100);
+
+    // Clean up interval on component destroy
+    return () => clearInterval(checkGoogleMapsLoaded);
+  });
+
+  async function validateLocation() {
+    if (!location) {
+      locationError = 'Please enter a location';
+      return false;
+    }
+
+    try {
+      const isValid = await placesService.validateLocation(location);
+      if (!isValid) {
+        locationError = 'Please enter a valid city name';
+        return false;
+      }
+      locationError = '';
+      return true;
+    } catch (error) {
+      locationError = 'Please enter a valid city name';
+      return false;
+    }
+  }
+
+  async function handleSubmit() {
+    if (await validateLocation()) {
+      dispatch('submit');
+    }
+  }
 
   const moodTypes = [
     { value: 'cozy', label: 'Cozy' },
@@ -63,13 +128,21 @@
       <div class="mb-4">
         <h3 class="text-xl font-semibold text-neutral-800">Where are you looking to go? <span class="text-pink-500 text-sm">*</span></h3>
       </div>
-      <input
-        bind:value={location}
-        class="w-full px-4 py-3 rounded-xl border border-neutral-200 
-        focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none
-        placeholder:text-neutral-400 text-neutral-900"
-        placeholder="Enter a city name (e.g. San Francisco, CA)"
-      />
+      <div class="space-y-2">
+        <input
+          bind:this={locationInput}
+          bind:value={location}
+          on:blur={validateLocation}
+          class="w-full px-4 py-3 rounded-xl border border-neutral-200 
+          focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none
+          placeholder:text-neutral-400 text-neutral-900
+          {locationError ? 'border-red-500' : ''}"
+          placeholder="Enter a city name (e.g. San Francisco, CA)"
+        />
+        {#if locationError}
+          <p class="text-red-500 text-sm">{locationError}</p>
+        {/if}
+      </div>
     </div>
 
     <div>
@@ -118,7 +191,7 @@
     </div>
 
     <button
-      on:click={() => dispatch('submit')}
+      on:click={handleSubmit}
       disabled={!location || !mood || loading}
       class="w-full py-4 rounded-xl font-semibold transition-all
       {loading || !location || !mood

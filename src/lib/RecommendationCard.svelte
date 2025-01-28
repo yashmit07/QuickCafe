@@ -1,16 +1,37 @@
-<script>
+<script lang="ts">
   import { fade } from 'svelte/transition';
-  export let recommendation = {
-    name: '',
-    description: '',
-    features: '',
-    bestFor: ''
+  export let recommendation: {
+    name: string;
+    description: string;
+    features: string;
+    bestFor: string;
+    operating_hours?: {
+      [day: string]: {
+        open: string;
+        close: string;
+      };
+    };
+    photos?: {
+      url: string;
+      width: number;
+      height: number;
+    }[];
   };
 
   // Parse price and distance from name
   $: [cafeName, details] = recommendation.name.split('-').map(s => s.trim());
   $: priceLevel = details?.split('(')[0]?.trim() || '';
   $: distance = details?.match(/\(([^)]+)\)/)?.[1] || '';
+
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  
+  function formatTime(time: string): string {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const formattedHour = hour % 12 || 12;
+    return `${formattedHour}:${minutes} ${ampm}`;
+  }
 </script>
 
 <div in:fade|global>
@@ -81,6 +102,30 @@
             <span class="text-neutral-600">{recommendation.bestFor}</span>
           </div>
         </div>
+
+        {#if recommendation.operating_hours}
+          <div class="mt-6">
+            <h4 class="font-semibold text-gray-900 mb-2">Hours</h4>
+            <div class="grid grid-cols-1 gap-1">
+              {#each days as day}
+                {#if recommendation.operating_hours[day]}
+                  <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">{day}</span>
+                    <span class="text-gray-900">
+                      {formatTime(recommendation.operating_hours[day].open)} - 
+                      {formatTime(recommendation.operating_hours[day].close)}
+                    </span>
+                  </div>
+                {:else}
+                  <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">{day}</span>
+                    <span class="text-gray-400">Closed</span>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
   </div>

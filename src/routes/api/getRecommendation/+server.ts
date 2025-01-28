@@ -50,8 +50,8 @@ export const POST: RequestHandler = async ({ request }) => {
         const body = await request.json();
         console.log('Received request body:', body);
 
-        const { mood, priceRange, location, requirements = [] } = body as CafeRequest;
-        console.log('Parsed request:', { mood, priceRange, location, requirements });
+        const { mood, location, requirements = [], priceRange } = body as CafeRequest;
+        console.log('Parsed request:', { mood, location, requirements, priceRange });
 
         // Validate required fields
         if (!location) {
@@ -80,17 +80,6 @@ export const POST: RequestHandler = async ({ request }) => {
             );
         }
 
-        // Validate price range if provided
-        if (priceRange && !['$', '$$', '$$$'].includes(priceRange)) {
-            return new Response(
-                JSON.stringify({ 
-                    error: 'Invalid price range',
-                    validPriceRanges: ['$', '$$', '$$$']
-                }), 
-                { status: 400 }
-            );
-        }
-
         // Validate requirements if provided
         const validRequirements: AmenityType[] = [
             'wifi', 'outdoor_seating', 'power_outlets',
@@ -114,10 +103,32 @@ export const POST: RequestHandler = async ({ request }) => {
         let cafes: Cafe[] = []
         let coordinates: { lat: number; lng: number }
 
-        // 1. Check location cache first
+        // 1. Geocode location first (needed for both cache and search)
+        try {
+            console.log('Geocoding location:', location);
+            coordinates = await placesService.geocodeLocation(location)
+            console.log('Geocoded coordinates:', coordinates);
+        } catch (error) {
+            console.error('Error geocoding location:', error);
+            return new Response(
+                JSON.stringify({ 
+                    error: 'Invalid location',
+                    details: error instanceof Error ? error.message : 'Failed to geocode location'
+                }), 
+                { status: 400 }
+            )
+        }
+
+        // 2. Check location cache with coordinates
         try {
             console.log('Checking location cache...');
-            const cachedCafeIds = await cacheService.getLocationCache(location, priceRange);
+            const cachedCafeIds = await cacheService.getLocationCache(
+                coordinates.lat,
+                coordinates.lng,
+                5000,
+                priceRange
+            );
+            
             if (cachedCafeIds?.length) {
                 console.log('Cache hit! Getting cafes from cache...');
                 const { data: cachedCafes, error: cacheError } = await supabase
@@ -135,7 +146,11 @@ export const POST: RequestHandler = async ({ request }) => {
                     console.log(`Retrieved ${cafes.length} cafes from cache`);
                 }
             } else {
-                console.log('Cache miss for location:', location);
+                console.log('Cache miss for location:', { 
+                    lat: coordinates.lat, 
+                    lng: coordinates.lng,
+                    priceRange: priceRange 
+                });
             }
         } catch (error) {
             console.error('Error getting location cache:', error)
@@ -145,18 +160,12 @@ export const POST: RequestHandler = async ({ request }) => {
         // If no cached results or cache was invalid
         if (!cafes.length) {
             try {
-                // 2. Geocode location
-                console.log('Geocoding location:', location);
-                coordinates = await placesService.geocodeLocation(location)
-                console.log('Geocoded coordinates:', coordinates);
-
                 // 3. Search for nearby cafes
                 console.log('Searching for nearby cafes...');
                 const nearbyCafes = await placesService.searchNearbyCafes(
                     coordinates.lat,
                     coordinates.lng,
-                    5000,
-                    priceRange
+                    5000
                 )
                 console.log(`Found ${nearbyCafes.length} nearby cafes`);
                 
@@ -188,11 +197,13 @@ export const POST: RequestHandler = async ({ request }) => {
                     cafes = storedCafes
                     console.log(`Stored ${cafes.length} cafes`);
 
-                    // Cache the location results
+                    // Cache the location results with coordinates
                     console.log('Caching location results...');
                     await cacheService.cacheLocationResults(
-                        location, 
+                        coordinates.lat,
+                        coordinates.lng,
                         cafes.map(cafe => cafe.id),
+                        5000,
                         priceRange
                     )
                     console.log('Location results cached');
@@ -206,14 +217,11 @@ export const POST: RequestHandler = async ({ request }) => {
                 return new Response(
                     JSON.stringify({ 
                         error: 'Invalid location',
-                        details: error instanceof Error ? error.message : 'Failed to geocode location'
+                        details: error instanceof Error ? error.message : 'Failed to search for cafes'
                     }), 
                     { status: 400 }
                 )
             }
-        } else {
-            // Get coordinates for recommendation service
-            coordinates = await placesService.geocodeLocation(location)
         }
 
         // 5. Analyze cafes in batches
@@ -251,7 +259,7 @@ export const POST: RequestHandler = async ({ request }) => {
         const rankedCafes = await recommendationService.getRecommendations(
             coordinates.lat,
             coordinates.lng,
-            { mood, priceRange, location, requirements },
+            { mood, location, requirements },
             5
         )
         console.log(`Got ${rankedCafes.length} recommendations`);
@@ -267,8 +275,6 @@ export const POST: RequestHandler = async ({ request }) => {
         const prompt = `Act as a knowledgeable local café expert. I have analyzed and ranked ${rankedCafes.length} best matching cafes in ${location} based on:
 
 Desired Vibe: ${mood}
-Price Range: ${priceRange || 'Any'}
-Special Requirements: ${requirements.length ? requirements.join(', ') : 'None'}
 
 For each café, provide a recommendation in this exact format (including the ### separators):
 

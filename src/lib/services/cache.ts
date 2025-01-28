@@ -33,14 +33,19 @@ export class CacheService {
     /**
      * Check if we have cached results for a location
      */
-    async getLocationCache(searchLocation: string, priceRange?: string, radius: number = 5000): Promise<string[] | null> {
+    async getLocationCache(
+        lat: number,
+        lng: number,
+        radius: number = 5000,
+        priceLevel?: string
+    ): Promise<string[] | null> {
         try {
             // Try Redis first
-            const cacheKey = this.buildLocationCacheKey(searchLocation, priceRange, radius);
+            const cacheKey = this.buildLocationCacheKey(lat, lng, radius, priceLevel);
             const redisCache = await this.redis.get<string[]>(cacheKey);
             
             if (redisCache) {
-                console.log('Redis cache hit for location:', searchLocation);
+                console.log('Redis cache hit for location:', { lat, lng, priceLevel });
                 return redisCache;
             }
 
@@ -76,9 +81,15 @@ export class CacheService {
     /**
      * Store location search results in cache
      */
-    async cacheLocationResults(searchLocation: string, cafeIds: string[], priceRange?: string, radius: number = 5000): Promise<void> {
+    async cacheLocationResults(
+        lat: number,
+        lng: number,
+        cafeIds: string[],
+        radius: number = 5000,
+        priceLevel?: string
+    ): Promise<void> {
         try {
-            const cacheKey = this.buildLocationCacheKey(searchLocation, priceRange, radius);
+            const cacheKey = this.buildLocationCacheKey(lat, lng, radius, priceLevel);
             
             // Store in both Redis and Supabase
             await Promise.all([
@@ -165,15 +176,20 @@ export class CacheService {
         const timestamp = new Date().toISOString();
 
         try {
-            const vibeScores: VibeScore[] = Object.entries(vibes).map(([category, score]) => ({
-                vibe_category: category as VibeCategory,
-                confidence_score: score
-            }));
+            // Convert vibes and amenities to the format expected by the database function
+            const vibeScores = Object.entries(vibes)
+                .filter(([_, score]) => score > 0.4)
+                .map(([category, score]) => ({
+                    vibe_category: category,
+                    confidence_score: score
+                }));
 
-            const amenityScores: AmenityScore[] = Object.entries(amenities).map(([amenity, score]) => ({
-                amenity: amenity as AmenityType,
-                confidence_score: score
-            }));
+            const amenityScores = Object.entries(amenities)
+                .filter(([_, score]) => score > 0.5)
+                .map(([amenity, score]) => ({
+                    amenity: amenity,
+                    confidence_score: score
+                }));
 
             console.log('Caching analysis results for cafe:', cafeId);
             console.log('Vibe scores:', vibeScores);
@@ -214,7 +230,16 @@ export class CacheService {
         }
     }
 
-    private buildLocationCacheKey(location: string, priceRange?: string, radius: number = 5000): string {
-        return `${location}:${priceRange || 'any'}:${radius}`;
+    private buildLocationCacheKey(
+        lat: number,
+        lng: number,
+        radius: number = 5000,
+        priceLevel?: string
+    ): string {
+        // Round coordinates to 4 decimal places (about 11m precision)
+        const roundedLat = Math.round(lat * 10000) / 10000;
+        const roundedLng = Math.round(lng * 10000) / 10000;
+        const baseKey = `${roundedLat},${roundedLng}:${radius}`;
+        return priceLevel ? `${baseKey}:${priceLevel}` : baseKey;
     }
 }
