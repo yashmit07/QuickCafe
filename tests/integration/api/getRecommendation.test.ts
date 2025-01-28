@@ -93,9 +93,9 @@ vi.mock('$lib/services/cache', () => ({
     CacheService: vi.fn().mockImplementation(() => ({
         getLocationCache: vi.fn().mockResolvedValue(null),
         cacheLocationResults: vi.fn().mockResolvedValue(undefined),
-        hasRecentAnalysis: vi.fn().mockResolvedValue(false),
+        getAnalysisCache: vi.fn().mockResolvedValue(null),
         cacheAnalysisResults: vi.fn().mockResolvedValue(undefined),
-        invalidateLocationCache: vi.fn().mockResolvedValue(undefined)
+        clearRedisCache: vi.fn().mockResolvedValue(undefined)
     }))
 }))
 

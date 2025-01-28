@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import CafeCard from '$lib/components/CafeCard.svelte';
   import '../app.css';
   import Form from '$lib/Form.svelte';
   import LoadingCard from '$lib/LoadingCard.svelte';
@@ -52,7 +54,6 @@
         incomingStream += new TextDecoder().decode(value);
       }
 
-      // Parse the recommendations using the ### separator
       recommendations = incomingStream
         .split('###')
         .filter(text => text.trim())
@@ -60,7 +61,6 @@
           const lines = text.trim().split('\n');
           const recommendation: any = {};
           
-          // Skip empty lines and ensure we have content
           lines.filter(line => line.trim()).forEach(line => {
             const [key, ...valueParts] = line.split(':');
             if (valueParts.length > 0) {
@@ -82,23 +82,11 @@
             }
           });
           
-          // Log for debugging
-          if (!recommendation.name || !recommendation.description) {
-            console.log('Incomplete recommendation:', { text, recommendation });
-          }
-          
           return recommendation;
         })
-        .filter(rec => {
-          const isComplete = rec.name && rec.description && rec.features && rec.bestFor;
-          if (!isComplete) {
-            console.log('Filtered out incomplete recommendation:', rec);
-          }
-          return isComplete;
-        });
+        .filter(rec => rec.name && rec.description && rec.features && rec.bestFor);
 
-      console.log(`Parsed ${recommendations.length} recommendations`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
       alert(error instanceof Error ? error.message : 'An unexpected error occurred');
     } finally {
@@ -107,23 +95,23 @@
   }
 </script>
 
-<div class="min-h-screen bg-[#FBF7F4]">
+<div class="min-h-screen bg-white">
   <Header on:click={handleReturnHome} />
   
   <main class="max-w-4xl mx-auto px-4 py-12">
     {#if !showSearchForm}
-      <div class="text-center space-y-8">
-        <h1 class="text-5xl font-bold text-neutral-800">
+      <div class="text-center space-y-6">
+        <h1 class="text-4xl font-bold text-neutral-900">
           Discover your perfect<br>café experience
         </h1>
-        <p class="text-xl text-neutral-600">
+        <p class="text-lg text-neutral-600">
           Find the ideal spot that matches your vibe and needs
         </p>
-        <div class="flex justify-center gap-4">
+        <div class="flex justify-center">
           <button
             on:click={handleStartSearch}
-            class="px-6 py-3 rounded-full bg-gradient-to-r from-pink-600 to-pink-500 
-            text-white font-medium hover:from-pink-700 hover:to-pink-600"
+            class="px-6 py-3 rounded-full bg-[#E91E63] text-white font-medium 
+            hover:bg-[#D81B60] transition-colors"
           >
             Find My Perfect Café
           </button>
@@ -154,12 +142,10 @@
       </div>
     {/if}
   </main>
-
-  <Footer />
 </div>
 
 <style>
   :global(html) {
-    background-color: #f9fafb;
+    background-color: white;
   }
 </style>

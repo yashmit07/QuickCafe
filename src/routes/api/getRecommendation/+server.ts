@@ -179,25 +179,34 @@ export const POST: RequestHandler = async ({ request }) => {
                 // 4. Store cafes
                 try {
                     console.log('Storing cafes in database...');
-                    const { data: storedCafes, error } = await supabase
+                    // First, upsert the cafes
+                    await supabase
                         .from('cafes')
-                        .upsert(nearbyCafes)
-                        .select()
+                        .upsert(nearbyCafes, {
+                            onConflict: 'google_place_id',
+                            ignoreDuplicates: true
+                        });
                     
-                    if (error) {
-                        console.error('Error storing cafes:', error);
-                        throw error;
+                    // Then fetch all cafes with these google_place_ids
+                    const { data: allCafes, error: fetchError } = await supabase
+                        .from('cafes')
+                        .select('*')
+                        .in('google_place_id', nearbyCafes.map(cafe => cafe.google_place_id));
+
+                    if (fetchError) {
+                        console.error('Error fetching cafes:', fetchError);
+                        throw fetchError;
                     }
 
-                    if (!storedCafes?.length) {
-                        console.error('No cafes were stored');
-                        throw new Error('Failed to store cafe data')
+                    if (!allCafes?.length) {
+                        console.error('No cafes were found');
+                        throw new Error('Failed to get cafe data')
                     }
                     
-                    cafes = storedCafes
-                    console.log(`Stored ${cafes.length} cafes`);
+                    cafes = allCafes;
+                    console.log(`Retrieved ${cafes.length} cafes`);
 
-                    // Cache the location results with coordinates
+                    // Only cache after we have the proper database IDs
                     console.log('Caching location results...');
                     await cacheService.cacheLocationResults(
                         coordinates.lat,
@@ -205,12 +214,12 @@ export const POST: RequestHandler = async ({ request }) => {
                         cafes.map(cafe => cafe.id),
                         5000,
                         priceRange
-                    )
+                    );
                     console.log('Location results cached');
                 } catch (error) {
-                    console.error('Error storing cafes:', error)
+                    console.error('Error storing/retrieving cafes:', error);
                     // Continue with the cafes we found
-                    cafes = nearbyCafes
+                    cafes = nearbyCafes;
                 }
             } catch (error) {
                 console.error('Error in cafe search:', error);
@@ -229,7 +238,18 @@ export const POST: RequestHandler = async ({ request }) => {
         const cafesToAnalyze = [];
         
         for (const cafe of cafes) {
-            if (!(await cacheService.hasRecentAnalysis(cafe.id))) {
+            // Check if cafe has been analyzed in Postgres
+            const { data: existingVibes } = await supabase
+                .from('cafe_vibes')
+                .select('vibe_category, confidence_score')
+                .eq('cafe_id', cafe.id);
+            
+            const { data: existingAmenities } = await supabase
+                .from('cafe_amenities')
+                .select('amenity, confidence_score')
+                .eq('cafe_id', cafe.id);
+
+            if (!existingVibes?.length && !existingAmenities?.length) {
                 cafesToAnalyze.push(cafe);
             }
         }
@@ -241,14 +261,7 @@ export const POST: RequestHandler = async ({ request }) => {
                 await Promise.all(
                     batch.map(async (cafe) => {
                         console.log(`Analyzing cafe ${cafe.id}...`);
-                        const analysis = await analysisService.analyzeReviews(cafe);
-                        if (analysis) {
-                            await cacheService.cacheAnalysisResults(
-                                cafe.id,
-                                analysis.vibes,
-                                analysis.amenities
-                            );
-                        }
+                        await analysisService.analyzeReviews(cafe);
                     })
                 );
             }

@@ -109,7 +109,7 @@ export class PlacesServerService {
             location: `${lat},${lng}`,
             type: 'cafe',
             radius: radius.toString(),
-            keyword: 'coffee cafe'
+            keyword: 'matcha coffee cafe'
         });
 
         const url = `${this.PLACES_API_BASE}/nearbysearch/json?${params.toString()}`;
