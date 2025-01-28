@@ -2,191 +2,7 @@
 
 An AI-powered café recommendation engine that finds the perfect café based on your mood, preferences, and location.
 
-## Features
-
-- Location-based café search
-- Mood-based recommendations (cozy, modern, quiet, lively, artistic, traditional, industrial)
-- Amenity filtering (wifi, outdoor seating, power outlets, etc.)
-- Price range filtering
-- AI-powered analysis of café vibes and features
-- Caching system for fast responses
-
-## System Design
-
-### Tech Stack & Services
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        QuickCafé App                        │
-├─────────────────────────────────────────────────────────────┤
-│ Frontend                    │ Backend (Server-side)         │
-├────────────────────────────┼─────────────────────────────┤
-│ ┌──────────────────┐       │ ┌───────────────────┐      │
-│ │     SvelteKit    │       │ │    SvelteKit      │      │
-│ │ - Components     │       │ │ - API Routes      │      │
-│ │ - State Mgmt     │       │ │ - Server Actions  │      │
-│ │ - Routing        │       │ │ - Auth           │      │
-│ └──────────────────┘       │ └───────────────────┘      │
-│                            │           │                 │
-└────────────────────────────┼───────────┼─────────────────┘
-                             │           │
-                             │           ▼
-┌────────────────┐    ┌──────┴─────┐    ┌──────────────┐
-│  Upstash Redis │◄───┤ Data Layer ├───►│   Supabase   │
-│  - Geo Cache   │    └──────┬─────┘    │  PostgreSQL  │
-└────────────────┘           │          └──────────────┘
-                             │
-                    ┌────────┴───────┐
-                    │  External APIs  │
-                    └────────────────┘
-                    ┌────────┐ ┌──────┐
-                    │ Google │ │OpenAI│
-                    │ Places │ │ API  │
-                    └────────┘ └──────┘
-```
-
-### Service Call Flow
-```
-┌──────────┐          ┌────────────┐          ┌─────────┐
-│  Client  │          │  SvelteKit │          │  Redis  │
-│ Browser  │          │   Server   │          │ Cache   │
-└────┬─────┘          └─────┬──────┘          └────┬────┘
-     │                      │                       │
-     │   1. Search Request  │                       │
-     │ ─────────────────────>                       │
-     │                      │                       │
-     │                      │    2. Check Cache     │
-     │                      │ ──────────────────────>
-     │                      │                       │
-     │                      │    3. Cache Miss      │
-     │                      │ <──────────────────────
-     │                      │                       │
-     │                      │                  ┌────┴────┐
-     │                      │                  │ Google  │
-     │                      │                  │ Places  │
-     │                      │                  └────┬────┘
-     │                      │                       │
-     │                      │   4. Search Cafes     │
-     │                      │ ──────────────────────>
-     │                      │                       │
-     │                      │   5. Cafe Results     │
-     │                      │ <──────────────────────
-     │                      │                       │
-     │                      │              ┌────────┴─────┐
-     │                      │              │  Supabase    │
-     │                      │              │ PostgreSQL   │
-     │                      │              └──────┬───────┘
-     │                      │                     │
-     │                      │   6. Store Cafes    │
-     │                      │ ───────────────────>│
-     │                      │                     │
-     │                      │                ┌────┴────┐
-     │                      │                │ OpenAI  │
-     │                      │                │  API    │
-     │                      │                └────┬────┘
-     │                      │                     │
-     │                      │  7. Analyze Reviews │
-     │                      │ ───────────────────>│
-     │                      │                     │
-     │                      │  8. Vibe Scores     │
-     │                      │ <───────────────────│
-     │                      │                     │
-     │                      │   9. Store Scores   │
-     │                      │ ───────────────────>│
-     │                      │                     │
-     │   10. Stream Results │                     │
-     │ <─────────────────────                     │
-     │                      │                     │
-```
-
-### Architecture Overview
-```
-┌───────────────────────┐     ┌──────────────┐
-│       SvelteKit       │     │   Supabase   │
-│  Frontend + Backend   │────▶│  PostgreSQL  │
-└─────────────┬─────────┘     └──────────────┘
-              │
-              │
-        ┌─────┴─────┐
-        │  Upstash  │
-        │   Redis   │
-        └─────┬─────┘
-              │
-    ┌─────────┴──────────┐
-    │                    │
-┌────┴────┐        ┌─────┴─────┐
-│ Google  │        │  OpenAI   │
-│ Places  │        │    API    │
-└─────────┘        └───────────┘
-```
-
-### Key Components
-
-#### 1. Data Flow
-- **Initial Request**: User submits location, mood, and preferences
-- **Location Search**: 
-  - First checks Redis cache (5km radius)
-  - Falls back to Google Places API if cache miss
-  - Stores results in both Redis (1hr TTL) and Postgres
-- **Café Analysis**:
-  - Reviews analyzed by OpenAI for vibes and amenities
-  - Results stored permanently in Postgres
-  - Batch processing (3 cafes at a time) to manage API limits
-
-#### 2. Database Schema
-```sql
-cafes (
-  id UUID PRIMARY KEY,
-  google_place_id TEXT UNIQUE,
-  name TEXT,
-  location POINT,
-  price_level TEXT,
-  ...
-)
-
-cafe_vibes (
-  cafe_id UUID REFERENCES cafes(id),
-  vibe_category TEXT,
-  confidence_score FLOAT,
-  ...
-)
-
-cafe_amenities (
-  cafe_id UUID REFERENCES cafes(id),
-  amenity TEXT,
-  confidence_score FLOAT,
-  ...
-)
-```
-
-### Design Decisions
-
-#### 1. Caching Strategy
-- **Why Redis?** 
-  - Fast geospatial queries
-  - Automatic TTL for fresh data
-  - Low latency for frequent locations
-- **Cache Design:**
-  - Key: `{lat}:{lng}:{price_range}`
-  - Value: Array of cafe IDs
-  - TTL: 1 hour to balance freshness and performance
-
-#### 2. Analysis Storage
-- **Why Permanent Storage?**
-  - Café vibes rarely change
-  - Reduces OpenAI API costs
-  - Faster subsequent queries
-- **Batch Processing:**
-  - Processes 3 cafes simultaneously
-  - Balances speed vs API rate limits
-  - Manages token context length
-
-#### 3. Real-time Updates
-- **Streaming Response:**
-  - Shows analysis progress
-  - Better UX for longer searches
-  - Manages timeout risks
-
-## Quick Start
+## 🚀 Quick Start
 
 1. Clone the repository
 2. Install dependencies:
@@ -198,46 +14,152 @@ npm install
 cp .env.example .env
 ```
 Required variables:
-- `GOOGLE_PLACES_API_KEY`: For café data
-- `OPENAI_API_KEY`: For café analysis
-- `UPSTASH_REDIS_URL`: For caching
-- `SUPABASE_URL` and `SUPABASE_KEY`: For database
+```env
+GOOGLE_PLACES_API_KEY=   # For café data
+OPENAI_API_KEY=         # For café analysis
+UPSTASH_REDIS_URL=      # For caching
+SUPABASE_URL=          # For database
+SUPABASE_KEY=          # For database auth
+```
 
 4. Start the development server:
 ```bash
 npm run dev
 ```
 
-## API Usage
+## 🎯 Features
 
-### POST /api/getRecommendation
+- **Smart Search**: Find cafes based on location, mood, and specific requirements
+- **AI Analysis**: Intelligent scoring of café vibes and amenities
+- **Real-time Updates**: Stream analysis progress as results come in
+- **Fast Results**: Efficient caching for frequently searched locations
+
+## 🏗 System Architecture
+
+### Data Flow
+```mermaid
+graph TD
+    A[Browser] -->|1. Search Request| B[SvelteKit Server]
+    B -->|2. Check Cache| C[Redis]
+    C -->|3. Cache Hit/Miss| B
+    B -->|4. If Cache Miss| D[Google Places API]
+    D -->|5. Café Data| B
+    B -->|6. Store Cafes| E[Postgres]
+    B -->|7. Get/Store Analysis| F[OpenAI API]
+    B -->|8. Stream Results| A
+```
+
+### Database Schema
+```mermaid
+erDiagram
+    cafes {
+        UUID id PK
+        TEXT google_place_id UK
+        TEXT name
+        POINT location
+        TEXT price_level
+    }
+    cafe_vibes {
+        UUID cafe_id FK
+        TEXT vibe_category
+        FLOAT confidence_score
+    }
+    cafe_amenities {
+        UUID cafe_id FK
+        TEXT amenity
+        FLOAT confidence_score
+    }
+    cafes ||--o{ cafe_vibes : has
+    cafes ||--o{ cafe_amenities : has
+```
+
+## 🔄 Caching System
+
+### Location-based Cache
+- **Key Structure**: `location:{lat}:{lng}:{price_range}`
+- **Value**: Array of café IDs within 5km radius
+- **TTL**: 1 hour
+- **Coordinate Rounding**: 4 decimal places for better cache hits
+
+Example:
 ```typescript
+// Cache key for location search
+const cacheKey = `location:${roundCoord(lat)}:${roundCoord(lng)}:${priceRange}`
+
+// Cache structure
 {
-  "location": "string",     // e.g., "San Francisco, CA"
-  "mood": string,          // "cozy" | "modern" | "quiet" | "lively" | "artistic" | "traditional" | "industrial"
-  "priceRange": string,    // "$" | "$$" | "$$$"
-  "requirements": string[] // ["wifi", "outdoor_seating", "power_outlets", "pet_friendly", "parking", "workspace_friendly", "food_menu"]
+  "location:33.6638:-117.9047:$": [
+    "cafe_id_1",
+    "cafe_id_2",
+    ...
+  ]
 }
 ```
 
-## Performance Optimizations
+## 🎯 Scoring & Recommendation Logic
 
-- **Location Caching:**
-  - 5km radius coverage
-  - 1-hour cache duration
-  - Coordinate rounding for better cache hits
+### 1. Vibe Analysis
+```typescript
+type VibeScore = {
+  cozy: number;      // 0-1 score
+  modern: number;    // 0-1 score
+  quiet: number;     // 0-1 score
+  lively: number;    // 0-1 score
+  artistic: number;  // 0-1 score
+  traditional: number; // 0-1 score
+  industrial: number;  // 0-1 score
+}
+```
 
-- **Analysis Optimization:**
-  - Batch processing reduces API calls
-  - Permanent storage prevents reanalysis
-  - Parallel processing where possible
+### 2. Amenity Detection
+```typescript
+type AmenityScore = {
+  wifi: number;           // 0-1 score
+  outdoor_seating: number; // 0-1 score
+  power_outlets: number;   // 0-1 score
+  pet_friendly: number;    // 0-1 score
+  parking: number;         // 0-1 score
+  workspace_friendly: number; // 0-1 score
+  food_menu: number;         // 0-1 score
+}
+```
 
-- **Response Handling:**
-  - Streaming updates for long operations
-  - Early termination for no results
-  - Error recovery with partial results
+### 3. Ranking Algorithm
+1. **Base Score**: Vibe match percentage (0-100%)
+2. **Requirement Multiplier**: Each matched requirement adds 20%
+3. **Distance Penalty**: -5% per kilometer from target location
+4. **Final Score**: `(baseScore + requirementBonus) * (1 - distancePenalty)`
 
-## Development
+Example:
+```typescript
+const finalScore = (
+  (vibeMatchScore + (matchedRequirements * 0.2)) * 
+  (1 - (distanceKm * 0.05))
+).toFixed(2)
+```
+
+## 📡 API Reference
+
+### POST /api/getRecommendation
+```typescript
+interface CafeRequest {
+  location: string;     // e.g., "San Francisco, CA"
+  mood: VibeCategory;  // "cozy" | "modern" | "quiet" | "lively" | "artistic" | "traditional" | "industrial"
+  priceRange?: string; // "$" | "$$" | "$$$"
+  requirements?: AmenityType[]; // ["wifi", "outdoor_seating", etc.]
+}
+
+interface CafeResponse {
+  name: string;
+  description: string;
+  features: string[];
+  bestFor: string;
+  distance: number;
+  matchScore: number;
+}
+```
+
+## 🔧 Development
 
 ```bash
 # Run tests
@@ -250,6 +172,6 @@ npm run build
 npm run preview
 ```
 
-## License
+## 📄 License
 
 MIT
