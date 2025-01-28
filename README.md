@@ -11,6 +11,96 @@ An AI-powered café recommendation engine that finds the perfect café based on 
 - AI-powered analysis of café vibes and features
 - Caching system for fast responses
 
+## System Design
+
+### Architecture Overview
+```
+┌─────────────┐     ┌─────────────┐     ┌──────────────┐
+│   SvelteKit │     │   Node.js   │     │   Supabase   │
+│  Frontend   │────▶│   Backend   │────▶│  PostgreSQL  │
+└─────────────┘     └─────────────┘     └──────────────┘
+                          │
+                          │
+                    ┌─────┴─────┐
+                    │  Upstash  │
+                    │   Redis   │
+                    └─────┬─────┘
+                          │
+              ┌──────────┴──────────┐
+              │                     │
+        ┌─────┴─────┐         ┌─────┴─────┐
+        │  Google   │         │  OpenAI   │
+        │  Places   │         │    API    │
+        └───────────┘         └───────────┘
+```
+
+### Key Components
+
+#### 1. Data Flow
+- **Initial Request**: User submits location, mood, and preferences
+- **Location Search**: 
+  - First checks Redis cache (5km radius)
+  - Falls back to Google Places API if cache miss
+  - Stores results in both Redis (1hr TTL) and Postgres
+- **Café Analysis**:
+  - Reviews analyzed by OpenAI for vibes and amenities
+  - Results stored permanently in Postgres
+  - Batch processing (3 cafes at a time) to manage API limits
+
+#### 2. Database Schema
+```sql
+cafes (
+  id UUID PRIMARY KEY,
+  google_place_id TEXT UNIQUE,
+  name TEXT,
+  location POINT,
+  price_level TEXT,
+  ...
+)
+
+cafe_vibes (
+  cafe_id UUID REFERENCES cafes(id),
+  vibe_category TEXT,
+  confidence_score FLOAT,
+  ...
+)
+
+cafe_amenities (
+  cafe_id UUID REFERENCES cafes(id),
+  amenity TEXT,
+  confidence_score FLOAT,
+  ...
+)
+```
+
+### Design Decisions
+
+#### 1. Caching Strategy
+- **Why Redis?** 
+  - Fast geospatial queries
+  - Automatic TTL for fresh data
+  - Low latency for frequent locations
+- **Cache Design:**
+  - Key: `{lat}:{lng}:{price_range}`
+  - Value: Array of cafe IDs
+  - TTL: 1 hour to balance freshness and performance
+
+#### 2. Analysis Storage
+- **Why Permanent Storage?**
+  - Café vibes rarely change
+  - Reduces OpenAI API costs
+  - Faster subsequent queries
+- **Batch Processing:**
+  - Processes 3 cafes simultaneously
+  - Balances speed vs API rate limits
+  - Manages token context length
+
+#### 3. Real-time Updates
+- **Streaming Response:**
+  - Shows analysis progress
+  - Better UX for longer searches
+  - Manages timeout risks
+
 ## Quick Start
 
 1. Clone the repository
@@ -45,18 +135,22 @@ npm run dev
 }
 ```
 
-## Architecture
+## Performance Optimizations
 
-- Frontend: SvelteKit
-- Database: Supabase (PostgreSQL)
-- Caching: Upstash Redis
-- APIs: Google Places, OpenAI
+- **Location Caching:**
+  - 5km radius coverage
+  - 1-hour cache duration
+  - Coordinate rounding for better cache hits
 
-## Performance
+- **Analysis Optimization:**
+  - Batch processing reduces API calls
+  - Permanent storage prevents reanalysis
+  - Parallel processing where possible
 
-- Location-based caching
-- Batch processing for café analysis
-- Streaming responses for real-time updates
+- **Response Handling:**
+  - Streaming updates for long operations
+  - Early termination for no results
+  - Error recovery with partial results
 
 ## Development
 
