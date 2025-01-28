@@ -1,99 +1,76 @@
-# QuickCafe
+# QuickCafé
 
-QuickCafe is an intelligent café recommendation platform that helps you find the perfect café based on your mood, location, and specific requirements.
+An AI-powered café recommendation engine that finds the perfect café based on your mood, preferences, and location.
 
 ## Features
 
-- **Smart Café Recommendations**: Find cafes that match your vibe (cozy, modern, quiet, lively, artistic, traditional, industrial)
-- **Location-Based Search**: Discover cafes near you or any location
-- **Customizable Requirements**: Filter by amenities like:
-  - WiFi
-  - Outdoor Seating
-  - Power Outlets
-  - Pet Friendly
-  - Parking
-  - Workspace Friendly
-  - Food Menu
-- **Price Range Filtering**: Find cafes that match your budget
+- Location-based café search
+- Mood-based recommendations (cozy, modern, quiet, lively, artistic, traditional, industrial)
+- Amenity filtering (wifi, outdoor seating, power outlets, etc.)
+- Price range filtering
+- AI-powered analysis of café vibes and features
+- Caching system for fast responses
 
-## Tech Stack
-
-- Frontend: SvelteKit
-- Backend: Node.js
-- Database: Supabase (PostgreSQL)
-- Caching: Redis (Upstash)
-- APIs: Google Places API, OpenAI API
-
-## Environment Setup
-
-Create a `.env` file with the following variables:
-
-```env
-GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-OPENAI_API_KEY=your_openai_api_key
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-UPSTASH_REDIS_URL=your_upstash_redis_url
-UPSTASH_REDIS_TOKEN=your_upstash_redis_token
-```
-
-## Installation
+## Quick Start
 
 1. Clone the repository
 2. Install dependencies:
 ```bash
 npm install
 ```
-3. Start the development server:
+3. Set up environment variables:
+```bash
+cp .env.example .env
+```
+Required variables:
+- `GOOGLE_PLACES_API_KEY`: For café data
+- `OPENAI_API_KEY`: For café analysis
+- `UPSTASH_REDIS_URL`: For caching
+- `SUPABASE_URL` and `SUPABASE_KEY`: For database
+
+4. Start the development server:
 ```bash
 npm run dev
 ```
 
 ## API Usage
 
-Make a POST request to `/api/getRecommendation` with the following body:
-
-```json
+### POST /api/getRecommendation
+```typescript
 {
-  "location": "City or Address",
-  "mood": "modern",
-  "priceRange": "$$",
-  "requirements": ["wifi", "food_menu"]
+  "location": "string",     // e.g., "San Francisco, CA"
+  "mood": string,          // "cozy" | "modern" | "quiet" | "lively" | "artistic" | "traditional" | "industrial"
+  "priceRange": string,    // "$" | "$$" | "$$$"
+  "requirements": string[] // ["wifi", "outdoor_seating", "power_outlets", "pet_friendly", "parking", "workspace_friendly", "food_menu"]
 }
 ```
 
-### Valid Options
+## Architecture
 
-- **Moods**: cozy, modern, quiet, lively, artistic, traditional, industrial
-- **Price Ranges**: $, $$, $$$, $$$$
-- **Requirements**: wifi, outdoor_seating, power_outlets, pet_friendly, parking, workspace_friendly, food_menu
+- Frontend: SvelteKit
+- Database: Supabase (PostgreSQL)
+- Caching: Upstash Redis
+- APIs: Google Places, OpenAI
 
-## How It Works
+## Performance
 
-1. **Location Search**: 
-   - First checks Redis cache for nearby cafes
-   - If not found, queries Google Places API and caches results for 1 hour
-
-2. **Café Analysis**:
-   - Reviews are analyzed using OpenAI to determine vibes and amenities
-   - Results are stored permanently in PostgreSQL
-   - No need to reanalyze unless data is explicitly cleared
-
-3. **Recommendations**:
-   - Cafes are ranked based on matching mood and requirements
-   - Results are sorted by relevance and distance
-
-## Performance Optimizations
-
-- Redis caching for location-based searches (1-hour TTL)
+- Location-based caching
 - Batch processing for café analysis
-- Permanent storage of analysis results in PostgreSQL
-- Coordinate rounding for better cache hits
+- Streaming responses for real-time updates
 
-## Contributing
+## Development
 
-Feel free to submit issues and pull requests.
+```bash
+# Run tests
+npm test
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
 
 ## License
 
-MIT License
+MIT
