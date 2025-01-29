@@ -2,11 +2,7 @@
 
 <div align="center">
 
-![QuickCafé Logo](public/logo.png)
-
 An AI-powered café recommendation engine that finds your perfect café based on mood, preferences, and location.
-
-[Demo](https://quickcafe.vercel.app) · [Report Bug](https://github.com/yourusername/quickcafe/issues) · [Request Feature](https://github.com/yourusername/quickcafe/issues)
 
 </div>
 
