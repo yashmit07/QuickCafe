@@ -1,18 +1,127 @@
 # QuickCafé
 
-An AI-powered café recommendation engine that finds the perfect café based on your mood, preferences, and location.
+<div align="center">
 
-## 🚀 Quick Start
+![QuickCafé Logo](public/logo.png)
+
+An AI-powered café recommendation engine that finds your perfect café based on mood, preferences, and location.
+
+[Demo](https://quickcafe.vercel.app) · [Report Bug](https://github.com/yourusername/quickcafe/issues) · [Request Feature](https://github.com/yourusername/quickcafe/issues)
+
+</div>
+
+---
+
+## 📚 Table of Contents
+- [About](#-about)
+- [Features](#-features)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+- [Architecture](#-architecture)
+- [API Documentation](#-api-documentation)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+## 🎯 About
+
+QuickCafé revolutionizes how you find the perfect café. Using AI, we analyze café reviews and data to understand the true vibe and amenities of each location, helping you find exactly what you're looking for.
+
+### The Problem
+Finding the right café isn't just about location - it's about finding a space that matches your mood and needs. Traditional review platforms don't capture the "vibe" or specific amenities you're looking for.
+
+### Our Solution
+QuickCafé uses AI to:
+- Analyze thousands of reviews to understand café vibes
+- Score cafes on specific amenities and features
+- Match your mood and requirements to the perfect spot
+- Provide real-time, personalized recommendations
+
+## ✨ Features
+
+### Current Features
+
+#### 🎯 Smart Search
+- Location-based café discovery
+- Mood-based filtering (cozy, modern, quiet, lively, artistic, traditional, industrial)
+- Amenity requirements (wifi, outdoor seating, power outlets, etc.)
+- Price range filtering
+
+#### 🤖 AI Analysis
+- Review analysis for vibe detection
+- Amenity confidence scoring
+- Intelligent matching algorithm
+- Real-time result streaming
+
+#### ⚡ Performance
+- Location-based caching
+- Batch processing for analysis
+- Coordinate rounding for cache optimization
+- Streaming responses for better UX
+
+### Core Functionality
+
+#### 1. Vibe Detection
+```typescript
+type Vibe = 
+  | "cozy"      // Warm, comfortable atmosphere
+  | "modern"    // Contemporary design and feel
+  | "quiet"     // Low noise, good for focus
+  | "lively"    // Energetic, social atmosphere
+  | "artistic"  // Creative, unique space
+  | "traditional" // Classic café experience
+  | "industrial" // Warehouse/modern industrial design
+```
+
+#### 2. Amenity Scoring
+```typescript
+type Amenity = 
+  | "wifi"              // Internet connectivity
+  | "outdoor_seating"   // Outdoor space
+  | "power_outlets"     // Charging availability
+  | "pet_friendly"      // Allows pets
+  | "parking"           // Parking availability
+  | "workspace_friendly" // Good for working
+  | "food_menu"         // Food options
+```
+
+## 🛠 Tech Stack
+
+- **Frontend**: SvelteKit, TailwindCSS
+- **Backend**: SvelteKit (Server-side)
+- **Database**: Supabase (PostgreSQL)
+- **Caching**: Upstash Redis
+- **AI/ML**: OpenAI GPT-4
+- **APIs**: Google Places API
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+
+- npm/pnpm
+- Google Places API key
+- OpenAI API key
+- Upstash Redis account
+- Supabase account
+
+### Installation
 
 1. Clone the repository
-2. Install dependencies:
+```bash
+git clone https://github.com/yourusername/quickcafe.git
+cd quickcafe
+```
+
+2. Install dependencies
 ```bash
 npm install
 ```
-3. Set up environment variables:
+
+3. Set up environment variables
 ```bash
 cp .env.example .env
 ```
+
 Required variables:
 ```env
 GOOGLE_PLACES_API_KEY=   # For café data
@@ -22,21 +131,19 @@ SUPABASE_URL=          # For database
 SUPABASE_KEY=          # For database auth
 ```
 
-4. Start the development server:
+4. Initialize the database
+```bash
+npm run db:setup
+```
+
+5. Start the development server
 ```bash
 npm run dev
 ```
 
-## 🎯 Features
+## 🏗 Architecture
 
-- **Smart Search**: Find cafes based on location, mood, and specific requirements
-- **AI Analysis**: Intelligent scoring of café vibes and amenities
-- **Real-time Updates**: Stream analysis progress as results come in
-- **Fast Results**: Efficient caching for frequently searched locations
-
-## 🏗 System Architecture
-
-### Data Flow
+### System Overview
 ```mermaid
 graph TD
     A[Browser] -->|1. Search Request| B[SvelteKit Server]
@@ -52,13 +159,6 @@ graph TD
     F -->|8. Return Analysis| B
     B -->|9. Store Analysis| E
     B -->|10. Stream Results| A
-
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style B fill:#bbf,stroke:#333,stroke-width:2px
-    style C fill:#dfd,stroke:#333,stroke-width:2px
-    style D fill:#fdd,stroke:#333,stroke-width:2px
-    style E fill:#dfd,stroke:#333,stroke-width:2px
-    style F fill:#fdd,stroke:#333,stroke-width:2px
 ```
 
 ### Database Schema
@@ -70,189 +170,117 @@ erDiagram
         TEXT name
         POINT location
         TEXT price_level
+        TIMESTAMP created_at
+        TIMESTAMP updated_at
     }
     cafe_vibes {
         UUID cafe_id FK
         TEXT vibe_category
         FLOAT confidence_score
+        TIMESTAMP analyzed_at
     }
     cafe_amenities {
         UUID cafe_id FK
         TEXT amenity
         FLOAT confidence_score
+        TIMESTAMP analyzed_at
     }
     cafes ||--o{ cafe_vibes : has
     cafes ||--o{ cafe_amenities : has
 ```
 
-## 🔄 Caching System
+## 🔄 Caching Strategy
 
-### Location-based Cache
-- **Key Structure**: `location:{lat}:{lng}:{price_range}`
-- **Value**: Array of café IDs within 5km radius
+### Location Cache
+- **Key Format**: `location:{lat}:{lng}:{price_range}`
+- **Value**: Array of café IDs
 - **TTL**: 1 hour
-- **Coordinate Rounding**: 4 decimal places for better cache hits
+- **Radius**: 5km
+- **Coordinate Precision**: 4 decimal places
 
-Example:
-```typescript
-// Cache key for location search
-const cacheKey = `location:${roundCoord(lat)}:${roundCoord(lng)}:${priceRange}`
+### Analysis Cache
+- Stored in Postgres
+- No expiration (manually invalidated)
+- Batch processing (3 cafes at a time)
 
-// Cache structure
-{
-  "location:33.6638:-117.9047:$": [
-    "cafe_id_1",
-    "cafe_id_2",
-    ...
-  ]
-}
-```
+## 🎯 Recommendation Algorithm
 
-## 🎯 Scoring & Recommendation Logic
+### Scoring Factors
+1. **Vibe Match** (0-100%)
+   - Direct match with requested mood
+   - Secondary vibe compatibility
 
-### 1. Vibe Analysis
-```typescript
-type VibeScore = {
-  cozy: number;      // 0-1 score
-  modern: number;    // 0-1 score
-  quiet: number;     // 0-1 score
-  lively: number;    // 0-1 score
-  artistic: number;  // 0-1 score
-  traditional: number; // 0-1 score
-  industrial: number;  // 0-1 score
-}
-```
+2. **Amenity Requirements** (20% each)
+   - Each matched requirement adds 20%
+   - Confidence score affects match quality
 
-### 2. Amenity Detection
-```typescript
-type AmenityScore = {
-  wifi: number;           // 0-1 score
-  outdoor_seating: number; // 0-1 score
-  power_outlets: number;   // 0-1 score
-  pet_friendly: number;    // 0-1 score
-  parking: number;         // 0-1 score
-  workspace_friendly: number; // 0-1 score
-  food_menu: number;         // 0-1 score
-}
-```
+3. **Distance Penalty**
+   - -5% per kilometer from target location
+   - Max penalty: 50%
 
-### 3. Ranking Algorithm
-1. **Base Score**: Vibe match percentage (0-100%)
-2. **Requirement Multiplier**: Each matched requirement adds 20%
-3. **Distance Penalty**: -5% per kilometer from target location
-4. **Final Score**: `(baseScore + requirementBonus) * (1 - distancePenalty)`
-
-Example:
+### Final Score Calculation
 ```typescript
 const finalScore = (
   (vibeMatchScore + (matchedRequirements * 0.2)) * 
-  (1 - (distanceKm * 0.05))
+  (1 - Math.min(distanceKm * 0.05, 0.5))
 ).toFixed(2)
 ```
 
-## �� API Reference
+## 🛣 Roadmap
 
-### Endpoint: `/api/getRecommendation`
+### Phase 1: Core Features ✅
+- [x] Basic café search
+- [x] Mood-based filtering
+- [x] Amenity detection
+- [x] Distance-based results
+- [x] Caching system
 
-**Method**: `POST`
+### Phase 2: User Features 🚧
+- [ ] User accounts
+- [ ] Saved favorites
+- [ ] Personal preferences
+- [ ] Search history
+- [ ] Custom lists
 
-**Request Body**:
-```typescript
-{
-  // The location to search for cafes
-  location: "San Francisco, CA",
-  
-  // The desired vibe/mood of the cafe
-  mood: "cozy" | "modern" | "quiet" | "lively" | "artistic" | "traditional" | "industrial",
-  
-  // Optional: Price range filter
-  priceRange?: "$" | "$$" | "$$$",
-  
-  // Optional: Required amenities
-  requirements?: [
-    "wifi",
-    "outdoor_seating",
-    "power_outlets",
-    "pet_friendly",
-    "parking",
-    "workspace_friendly",
-    "food_menu"
-  ]
-}
-```
+### Phase 3: Enhanced Analysis 📋
+- [ ] Time-based recommendations
+- [ ] Crowd level prediction
+- [ ] Noise level analysis
+- [ ] Photo-based vibe analysis
+- [ ] Menu analysis
 
-**Response**: Stream of cafe recommendations, each separated by `###`
+### Phase 4: Social Features 🎯
+- [ ] User reviews
+- [ ] Shared lists
+- [ ] Social recommendations
+- [ ] Community contributions
+- [ ] Café owner verification
 
-```typescript
-// Each recommendation in the stream follows this format:
-{
-  // Name of the cafe
-  name: "Cafe Example",
-  
-  // AI-generated description based on reviews and analysis
-  description: "A cozy corner cafe with modern decor...",
-  
-  // List of notable features and amenities
-  features: [
-    "Strong wifi connection",
-    "Plenty of power outlets",
-    "Quiet atmosphere"
-  ],
-  
-  // AI-generated summary of ideal use cases
-  bestFor: "Perfect for focused work sessions or quiet meetings",
-  
-  // Distance from requested location in meters
-  distance: 750,
-  
-  // Calculated match score (0-100)
-  matchScore: 85.5
-}
-```
+### Phase 5: Advanced Features 🔮
+- [ ] Real-time occupancy
+- [ ] Table reservations
+- [ ] Mobile app
+- [ ] Offline support
+- [ ] API marketplace
 
-**Example Usage**:
-```typescript
-const response = await fetch('/api/getRecommendation', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    location: "San Francisco, CA",
-    mood: "cozy",
-    priceRange: "$$",
-    requirements: ["wifi", "power_outlets"]
-  })
-});
+## 🤝 Contributing
 
-// Response is streamed, so we need to read it chunk by chunk
-const reader = response.body.getReader();
-let recommendations = '';
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  recommendations += new TextDecoder().decode(value);
-}
-
-// Split recommendations by separator
-const cafeList = recommendations
-  .split('###')
-  .filter(text => text.trim())
-  .map(text => parseRecommendation(text));
-```
-
-## 🔧 Development
-
-```bash
-# Run tests
-npm test
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-```
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-MIT
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+<div align="center">
+
+Made with ☕ by [Your Name](https://github.com/yourusername)
+
+</div>
