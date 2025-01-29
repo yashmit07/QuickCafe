@@ -224,44 +224,31 @@ const finalScore = (
 
 ## 🛣 Roadmap
 
-### Phase 1: Core Features ✅
+### Current Features ✅
 - [x] Basic café search
 - [x] Mood-based filtering
 - [x] Amenity detection
 - [x] Distance-based results
 - [x] Caching system
 
-### Phase 2: User Features 🚧
+### Future Goals/Ideas 🚧
 - [ ] User accounts
 - [ ] Saved favorites
 - [ ] Personal preferences
 - [ ] Search history
 - [ ] Custom lists
-
-### Phase 3: Enhanced Analysis 📋
 - [ ] Time-based recommendations
 - [ ] Crowd level prediction
 - [ ] Noise level analysis
 - [ ] Photo-based vibe analysis
 - [ ] Menu analysis
-
-### Phase 4: Social Features 🎯
 - [ ] User reviews
 - [ ] Shared lists
 - [ ] Social recommendations
 - [ ] Community contributions
 - [ ] Café owner verification
 
-### Phase 5: Advanced Features 🔮
-- [ ] Real-time occupancy
-- [ ] Table reservations
-- [ ] Mobile app
-- [ ] Offline support
-- [ ] API marketplace
-
 ## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
@@ -277,6 +264,6 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <div align="center">
 
-Made with ☕ by [Your Name](https://github.com/yourusername)
+Made with ☕ by [Yashmit Singh](https://github.com/yashmit07)
 
 </div>
