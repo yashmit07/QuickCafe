@@ -4,13 +4,11 @@
 
 An AI-powered café recommendation engine that finds your perfect café based on mood, preferences, and location.
 
-[Live Demo](https://quickcafe.vercel.app) | [Report Bug](https://github.com/yashmit07/quickcafe/issues) | [Request Feature](https://github.com/yashmit07/quickcafe/issues)
-
 </div>
 
 ## 📚 About
 
-QuickCafé revolutionizes café discovery by combining location data with AI-powered analysis of café vibes and amenities. Unlike traditional platforms that only show ratings and reviews, we understand the actual atmosphere and features of each café.
+QuickCafé provides café discovery by combining location data with AI-powered analysis of café vibes and amenities. Unlike traditional platforms that only show ratings and reviews, we understand the actual atmosphere and features of each café.
 
 ### The Problem
 Finding the right café isn't just about location - it's about finding a space that matches your mood and needs. Traditional review platforms don't capture the "vibe" or specific amenities you're looking for.
@@ -338,8 +336,6 @@ npm run dev
 - [x] Core recommendation engine
 - [x] Real-time streaming
 - [x] Location-based caching
-- [ ] Time-based recommendations
-- [ ] Photo-based vibe analysis
 
 ### Future Plans
 - User accounts and preferences
