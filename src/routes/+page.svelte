@@ -82,7 +82,9 @@
                 case 'best for':
                   recommendation.bestFor = value;
                   break;
-                // Add fallbacks for missing fields
+                case 'google_place_id':
+                  recommendation.google_place_id = value;
+                  break;
                 default:
                   console.log('Unknown key:', key.trim().toLowerCase());
                   break;
@@ -98,7 +100,6 @@
           console.log('Parsed recommendation:', recommendation);
           return recommendation;
         })
-        // Only filter out recommendations without a name
         .filter(rec => rec.name);
 
       console.log('Final recommendations:', recommendations);

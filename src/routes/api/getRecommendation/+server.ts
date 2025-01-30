@@ -50,13 +50,13 @@ export const config = {
 export const POST: RequestHandler = async ({ request }) => {
     try {
         // Add timeout to the entire request
-        const timeoutPromise = new Promise((_, reject) => {
+        const timeoutPromise = new Promise<Response>((_, reject) => {
             setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
         });
 
         const resultPromise = handleRequest(request);
         const result = await Promise.race([resultPromise, timeoutPromise]);
-        return result;
+        return result as Response;
     } catch (error) {
         console.error('Error in recommendation endpoint:', error);
         
@@ -68,14 +68,14 @@ export const POST: RequestHandler = async ({ request }) => {
                 details: 'Please try again with a different location or fewer requirements'
             }), 
             { 
-                status: error.message === 'Request timeout' ? 504 : 500,
+                status: error instanceof Error && error.message === 'Request timeout' ? 504 : 500,
                 headers: { 'Content-Type': 'application/json' }
             }
         );
     }
 };
 
-async function handleRequest(request: Request) {
+async function handleRequest(request: Request): Promise<Response> {
     try {
         // 0. Verify database setup
         await verifyDatabaseSetup();
@@ -359,7 +359,8 @@ ${JSON.stringify(rankedResults.recommendations.map(cafe => ({
     vibe_scores: cafe.vibe_scores,
     amenity_scores: cafe.amenity_scores,
     description: cafe.description,
-    photos: cafe.photos
+    photos: cafe.photos,
+    google_place_id: cafe.google_place_id
 })), null, 2)}
 
 Important notes:
@@ -405,7 +406,16 @@ Important notes:
 
     } catch (error) {
         console.error('Error processing request:', error);
-        throw error; // Let the outer handler deal with it
+        return new Response(
+            JSON.stringify({ 
+                error: 'Failed to process request',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            }), 
+            { 
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+            }
+        );
     }
 }
 

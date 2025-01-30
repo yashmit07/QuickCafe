@@ -29,6 +29,7 @@ export interface Cafe {
     last_review_fetch: string
     created_at?: string
     updated_at?: string
+    description?: string
 }
 
 export interface CafeVibe {
@@ -56,4 +57,5 @@ export interface ScoredCafe extends Cafe {
     vibe_scores: Record<VibeCategory, number>
     amenity_scores: Record<AmenityType, number>
     _score?: number
+    description?: string
 }

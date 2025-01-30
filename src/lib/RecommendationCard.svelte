@@ -5,6 +5,7 @@
     description: string;
     features: string;
     bestFor: string;
+    google_place_id?: string;
     operating_hours?: {
       [day: string]: {
         open: string;
@@ -31,6 +32,14 @@
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const formattedHour = hour % 12 || 12;
     return `${formattedHour}:${minutes} ${ampm}`;
+  }
+
+  function getGoogleMapsUrl(): string {
+    if (recommendation.google_place_id) {
+      return `https://www.google.com/maps/place/?q=place_id:${recommendation.google_place_id}`;
+    }
+    // Fallback to search by name if no place ID
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cafeName)}`;
   }
 </script>
 
@@ -81,6 +90,15 @@
                 <span class="text-pink-600 font-semibold">{priceLevel}</span>
                 <span class="text-neutral-300">•</span>
                 <span class="text-neutral-500">{distance}</span>
+                <span class="text-neutral-300">•</span>
+                <a 
+                  href={getGoogleMapsUrl()} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  class="text-pink-600 hover:text-pink-700 transition-colors"
+                >
+                  View on Maps
+                </a>
               </div>
             </div>
           </div>
