@@ -266,34 +266,19 @@ npm run dev
 
 ## 🛣 Roadmap
 
-<<<<<<< HEAD
 ### Phase 1: Core Features ✅
 - [x] Basic café search with Google Places API
 - [x] AI-powered vibe and amenity analysis
 - [x] Location-based caching with Redis
 - [x] Real-time recommendation streaming
 - [x] Smart scoring and ranking system
+- [x] Distance-based results
+- [x] Mood-based filtering
 
 ### Phase 2: Enhanced Analysis 🚧
-=======
-### Current Features ✅
-- [x] Basic café search
-- [x] Mood-based filtering
-- [x] Amenity detection
-- [x] Distance-based results
-- [x] Caching system
-
-### Future Goals/Ideas 🚧
-- [ ] User accounts
-- [ ] Saved favorites
-- [ ] Personal preferences
-- [ ] Search history
-- [ ] Custom lists
->>>>>>> c90b8596aba9337ab671e2b3ee72532d36389707
 - [ ] Time-based recommendations
 - [ ] Crowd level prediction
 - [ ] Photo-based vibe analysis
-<<<<<<< HEAD
 - [ ] Menu analysis and categorization
 - [ ] Price analysis for better matching
 
@@ -303,20 +288,15 @@ npm run dev
 - [ ] Favorite cafés and lists
 - [ ] Search history
 - [ ] Personal preferences storage
+- [ ] Custom lists
 
 ### Phase 4: Social Features 🤝
 - [ ] User reviews and ratings
 - [ ] Shared café lists
-=======
-- [ ] Menu analysis
-- [ ] User reviews
-- [ ] Shared lists
->>>>>>> c90b8596aba9337ab671e2b3ee72532d36389707
 - [ ] Social recommendations
 - [ ] Community contributions
 - [ ] Café owner verification
 
-<<<<<<< HEAD
 ### Phase 5: Advanced Features 🚀
 - [ ] Real-time occupancy tracking
 - [ ] Table/space reservations
@@ -355,15 +335,6 @@ We welcome contributions! Here's how you can help:
    - Include reproduction steps
    - Attach relevant logs
    - Specify your environment
-=======
-## 🤝 Contributing
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
->>>>>>> c90b8596aba9337ab671e2b3ee72532d36389707
 
 ## 📄 License
 
