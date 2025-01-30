@@ -109,8 +109,8 @@ export class PlacesService {
             key: GOOGLE_PLACES_API_KEY,
             location: `${lat},${lng}`,
             type: 'cafe',
-            radius: radius.toString(),
-            keyword: 'coffee cafe'
+            keyword: 'cafe coffee',
+            rankby: 'distance'
         });
 
         const url = `${this.PLACES_API_BASE}/nearbysearch/json?${params.toString()}`;
@@ -129,14 +129,25 @@ export class PlacesService {
             throw new Error(`Places API error: ${data.status}`);
         }
 
-        // Filter out non-cafes
+        // Filter out non-cafes more strictly
         const filteredResults = data.results.filter(place => {
             const name = place.name.toLowerCase();
-            const excludeTerms = ['mcdonalds', 'burger', 'taco', 'subway', 'pizza', 'restaurant'];
-            return !excludeTerms.some(term => name.includes(term));
+            // Exclude restaurants and non-cafe establishments
+            const excludeTerms = [
+                'restaurant', 'mcdonalds', 'burger', 'taco', 'subway', 'pizza',
+                'pho', 'thai', 'sushi', 'chinese', 'indian', 'mexican',
+                'bbq', 'grill', 'steakhouse', 'buffet', 'diner'
+            ];
+            // Include terms that suggest it's a cafe
+            const includeTerms = ['cafe', 'coffee', 'tea', 'bakery', 'roaster'];
+            
+            // More lenient filtering - only need to match include terms
+            return includeTerms.some(term => name.includes(term));
         });
 
-        const placesPromises = filteredResults.map(place => this.getPlaceDetails(place));
+        // Take top 20 results after filtering
+        const limitedResults = filteredResults.slice(0, 20);
+        const placesPromises = limitedResults.map(place => this.getPlaceDetails(place));
         const places = await Promise.all(placesPromises);
         return places.filter((place): place is Cafe => place !== null);
     }
@@ -146,8 +157,8 @@ export class PlacesService {
      */
     private async getPlaceDetails(place: GooglePlace): Promise<Cafe | null> {
         try {
-            const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,geometry,formatted_address,price_level,reviews,opening_hours,photos&key=${GOOGLE_PLACES_API_KEY}`;
-            const response = await fetch(detailsUrl);
+            const detailsUrl = `${this.PLACES_API_BASE}/details/json?place_id=${place.place_id}&fields=name,geometry,formatted_address,price_level,reviews,opening_hours,photos&key=${GOOGLE_PLACES_API_KEY}`;
+            const response = await this.retryableRequest(detailsUrl);
             const data = await response.json();
             
             if (data.status !== 'OK' || !data.result) {
@@ -157,30 +168,19 @@ export class PlacesService {
             const details: GooglePlaceDetails = data.result;
 
             // Process operating hours
-            const operating_hours = details.opening_hours?.periods.reduce((acc, period) => {
-                const openDay = this.DAYS[period.open.day];
-                const closeDay = this.DAYS[period.close.day];
-                
-                if (openDay === closeDay) {
-                    acc[openDay] = {
-                        open: `${period.open.time.slice(0, 2)}:${period.open.time.slice(2)}`,
-                        close: `${period.close.time.slice(0, 2)}:${period.close.time.slice(2)}`
-                    };
-                }
-                return acc;
-            }, {} as Record<string, { open: string; close: string }>) || null;
+            const operating_hours = details.opening_hours ? {
+                periods: details.opening_hours.periods,
+                weekday_text: details.opening_hours.weekday_text
+            } : null;
 
             // Process photos
-            const photos = await Promise.all(
-                (details.photos || []).slice(0, 3).map(async photo => {
-                    const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${photo.width}&photoreference=${photo.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
-                    return {
-                        url: photoUrl,
-                        width: photo.width,
-                        height: photo.height
-                    };
-                })
-            );
+            const photos = details.photos ? {
+                references: details.photos.map(photo => ({
+                    reference: photo.photo_reference,
+                    width: photo.width,
+                    height: photo.height
+                }))
+            } : null;
 
             const cafe: Cafe = {
                 id: crypto.randomUUID(),
@@ -189,30 +189,46 @@ export class PlacesService {
                 location: `POINT(${place.geometry.location.lng} ${place.geometry.location.lat})`,
                 address: details.formatted_address || '',
                 price_level: this.getPriceLevel(details.price_level),
-                reviews: details.reviews || [],
+                reviews: details.reviews || null,
                 operating_hours,
                 photos,
                 last_review_fetch: new Date().toISOString()
             };
 
             // Update or insert cafe
-            const { data: existingCafe } = await supabase
+            const { data: existingCafes, error: lookupError } = await supabase
                 .from('cafes')
                 .select('id')
-                .eq('google_place_id', place.place_id)
-                .single();
+                .eq('google_place_id', place.place_id);
 
-            if (existingCafe) {
-                await supabase
+            if (lookupError) {
+                console.error('Error looking up cafe:', lookupError);
+                return null;
+            }
+
+            if (existingCafes && existingCafes.length > 0) {
+                const existingCafe = existingCafes[0];
+                const { error: updateError } = await supabase
                     .from('cafes')
                     .update(cafe)
                     .eq('id', existingCafe.id);
+                
+                if (updateError) {
+                    console.error('Error updating cafe:', updateError);
+                    return null;
+                }
                 return { ...cafe, id: existingCafe.id };
             } else {
-                await supabase
+                const { data: insertedCafes, error: insertError } = await supabase
                     .from('cafes')
-                    .insert(cafe);
-                return cafe;
+                    .insert(cafe)
+                    .select();
+                
+                if (insertError || !insertedCafes || insertedCafes.length === 0) {
+                    console.error('Error inserting cafe:', insertError);
+                    return null;
+                }
+                return insertedCafes[0];
             }
         } catch (error) {
             console.error('Error processing place:', error);

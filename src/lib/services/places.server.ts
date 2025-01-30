@@ -21,6 +21,12 @@ interface PlaceSearchResponse {
 }
 
 interface GooglePlaceDetails extends GooglePlace {
+    formatted_address?: string;
+    price_level?: number;
+    reviews?: {
+        text: string;
+        rating: number;
+    }[];
     opening_hours?: {
         periods: {
             open: { day: number; time: string };
@@ -108,8 +114,8 @@ export class PlacesServerService {
             key: GOOGLE_PLACES_API_KEY,
             location: `${lat},${lng}`,
             type: 'cafe',
-            radius: radius.toString(),
-            keyword: 'matcha coffee cafe'
+            keyword: 'cafe coffee',
+            rankby: 'distance'
         });
 
         const url = `${this.PLACES_API_BASE}/nearbysearch/json?${params.toString()}`;
@@ -128,14 +134,25 @@ export class PlacesServerService {
             throw new Error(`Places API error: ${data.status}`);
         }
 
-        // Filter out non-cafes
+        // Filter out non-cafes more strictly
         const filteredResults = data.results.filter(place => {
             const name = place.name.toLowerCase();
-            const excludeTerms = ['mcdonalds', 'burger', 'taco', 'subway', 'pizza', 'restaurant'];
-            return !excludeTerms.some(term => name.includes(term));
+            // Exclude restaurants and non-cafe establishments
+            const excludeTerms = [
+                'restaurant', 'mcdonalds', 'burger', 'taco', 'subway', 'pizza',
+                'pho', 'thai', 'sushi', 'chinese', 'indian', 'mexican',
+                'bbq', 'grill', 'steakhouse', 'buffet', 'diner'
+            ];
+            // Include terms that suggest it's a cafe
+            const includeTerms = ['cafe', 'coffee', 'tea', 'bakery', 'roaster'];
+            
+            // More lenient filtering - only need to match include terms
+            return includeTerms.some(term => name.includes(term));
         });
 
-        const placesPromises = filteredResults.map(place => this.getPlaceDetails(place));
+        // Take top 20 results after filtering
+        const limitedResults = filteredResults.slice(0, 20);
+        const placesPromises = limitedResults.map(place => this.getPlaceDetails(place));
         const places = await Promise.all(placesPromises);
         return places.filter((place): place is Cafe => place !== null);
     }

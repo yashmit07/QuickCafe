@@ -3,7 +3,7 @@ import { Redis } from '@upstash/redis'
 import { UPSTASH_REDIS_URL, UPSTASH_REDIS_TOKEN } from '$env/static/private'
 
 export class CacheService {
-    private static readonly REDIS_TTL = 3600; // 1 hour in seconds
+    private static readonly REDIS_TTL = 86400; // 24 hours in seconds
     private redis: Redis;
 
     constructor() {

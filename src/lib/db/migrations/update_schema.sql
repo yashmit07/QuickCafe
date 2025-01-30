@@ -1,12 +1,82 @@
--- Drop ALL possible variations of both functions
+-- Drop existing functions first
 DROP FUNCTION IF EXISTS search_nearby_cafes(double precision, double precision, integer, integer);
 DROP FUNCTION IF EXISTS search_nearby_cafes(double precision, double precision, integer, price_level, integer, integer);
 DROP FUNCTION IF EXISTS search_nearby_cafes(double precision, double precision, integer, price_level, integer);
 DROP FUNCTION IF EXISTS search_nearby_cafes(double precision, double precision, integer, integer, integer);
 DROP FUNCTION IF EXISTS find_cafes_v2(double precision, double precision, integer, price_level, integer);
 DROP FUNCTION IF EXISTS find_cafes_v2(double precision, double precision, integer, text, integer);
+DROP FUNCTION IF EXISTS begin_transaction();
+DROP FUNCTION IF EXISTS commit_transaction();
+DROP FUNCTION IF EXISTS rollback_transaction();
 
--- Create a completely new function with a different name
+-- Drop and recreate types
+DROP TYPE IF EXISTS price_level CASCADE;
+DROP TYPE IF EXISTS vibe_category CASCADE;
+DROP TYPE IF EXISTS amenity_type CASCADE;
+
+-- Create types
+CREATE TYPE price_level AS ENUM ('$', '$$', '$$$');
+CREATE TYPE vibe_category AS ENUM (
+    'cozy', 'modern', 'quiet', 'lively', 
+    'artistic', 'traditional', 'industrial'
+);
+CREATE TYPE amenity_type AS ENUM (
+    'wifi', 'outdoor_seating', 'power_outlets',
+    'pet_friendly', 'parking', 'workspace_friendly',
+    'food_menu'
+);
+
+-- Drop and recreate tables
+DROP TABLE IF EXISTS location_cache CASCADE;
+DROP TABLE IF EXISTS cafe_amenities CASCADE;
+DROP TABLE IF EXISTS cafe_vibes CASCADE;
+DROP TABLE IF EXISTS cafes CASCADE;
+
+-- Create tables
+CREATE TABLE cafes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    google_place_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    location GEOGRAPHY(POINT, 4326) NOT NULL,
+    address TEXT NOT NULL,
+    price_level price_level,
+    reviews JSONB,
+    operating_hours JSONB,
+    photos JSONB,
+    last_review_fetch TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE cafe_amenities (
+    cafe_id UUID REFERENCES cafes(id) ON DELETE CASCADE,
+    amenity amenity_type NOT NULL,
+    confidence_score NUMERIC,
+    last_analyzed TIMESTAMPTZ,
+    PRIMARY KEY (cafe_id, amenity)
+);
+
+CREATE TABLE cafe_vibes (
+    cafe_id UUID REFERENCES cafes(id) ON DELETE CASCADE,
+    vibe_category vibe_category NOT NULL,
+    confidence_score NUMERIC,
+    last_analyzed TIMESTAMPTZ,
+    PRIMARY KEY (cafe_id, vibe_category)
+);
+
+CREATE TABLE location_cache (
+    search_location TEXT PRIMARY KEY,
+    cafe_ids UUID[] NOT NULL,
+    last_updated TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes
+CREATE INDEX cafes_location_idx ON cafes USING GIST(location);
+CREATE INDEX cafes_price_idx ON cafes(price_level);
+CREATE INDEX cafe_vibes_analysis_date_idx ON cafe_vibes(last_analyzed);
+CREATE INDEX cafe_amenities_analysis_date_idx ON cafe_amenities(last_analyzed);
+
+-- Create search function
 CREATE OR REPLACE FUNCTION find_cafes_v2(
     search_lat DOUBLE PRECISION,
     search_lng DOUBLE PRECISION,

@@ -33,20 +33,19 @@ export class AnalysisService {
                     console.log('High confidence vibes to insert:', vibeScores);
                     
                     // Delete existing vibes first
-                    await supabase
+                    const { error: deleteVibeError } = await supabase
                         .from('cafe_vibes')
                         .delete()
                         .eq('cafe_id', cafeId);
+                        
+                    if (deleteVibeError) throw deleteVibeError;
 
                     // Insert new vibes
                     const { error: vibeError } = await supabase
                         .from('cafe_vibes')
                         .insert(vibeScores);
                         
-                    if (vibeError) {
-                        console.error('Error saving vibe scores:', vibeError);
-                        throw vibeError;
-                    }
+                    if (vibeError) throw vibeError;
                     console.log('Successfully saved high confidence vibes');
                 }
             }
@@ -67,20 +66,19 @@ export class AnalysisService {
                     console.log('High confidence amenities to insert:', amenityScores);
                     
                     // Delete existing amenities first
-                    await supabase
+                    const { error: deleteAmenityError } = await supabase
                         .from('cafe_amenities')
                         .delete()
                         .eq('cafe_id', cafeId);
+                        
+                    if (deleteAmenityError) throw deleteAmenityError;
 
                     // Insert new amenities
                     const { error: amenityError } = await supabase
                         .from('cafe_amenities')
                         .insert(amenityScores);
                         
-                    if (amenityError) {
-                        console.error('Error saving amenity scores:', amenityError);
-                        throw amenityError;
-                    }
+                    if (amenityError) throw amenityError;
                     console.log('Successfully saved high confidence amenities');
                 }
             }

@@ -42,7 +42,40 @@ const recommendationService = new RecommendationService()
 const placesService = new PlacesService()
 const cacheService = new CacheService()
 
+export const config = {
+    runtime: 'edge',
+    regions: ['iad1'], // Use the closest region to your users
+};
+
 export const POST: RequestHandler = async ({ request }) => {
+    try {
+        // Add timeout to the entire request
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
+        });
+
+        const resultPromise = handleRequest(request);
+        const result = await Promise.race([resultPromise, timeoutPromise]);
+        return result;
+    } catch (error) {
+        console.error('Error in recommendation endpoint:', error);
+        
+        // Return a more specific error message
+        const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+        return new Response(
+            JSON.stringify({ 
+                error: errorMessage,
+                details: 'Please try again with a different location or fewer requirements'
+            }), 
+            { 
+                status: error.message === 'Request timeout' ? 504 : 500,
+                headers: { 'Content-Type': 'application/json' }
+            }
+        );
+    }
+};
+
+async function handleRequest(request: Request) {
     try {
         // 0. Verify database setup
         await verifyDatabaseSetup();
@@ -236,6 +269,7 @@ export const POST: RequestHandler = async ({ request }) => {
         // 5. Analyze cafes in batches
         const BATCH_SIZE = 3;
         const cafesToAnalyze = [];
+        const analyzedCafes = new Set<string>();
         
         for (const cafe of cafes) {
             // Check if cafe has been analyzed in Postgres
@@ -251,6 +285,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
             if (!existingVibes?.length && !existingAmenities?.length) {
                 cafesToAnalyze.push(cafe);
+            } else {
+                analyzedCafes.add(cafe.id);
             }
         }
 
@@ -258,26 +294,43 @@ export const POST: RequestHandler = async ({ request }) => {
             console.log(`Analyzing ${cafesToAnalyze.length} cafes in batches of ${BATCH_SIZE}...`);
             for (let i = 0; i < cafesToAnalyze.length; i += BATCH_SIZE) {
                 const batch = cafesToAnalyze.slice(i, i + BATCH_SIZE);
-                await Promise.all(
+                const results = await Promise.allSettled(
                     batch.map(async (cafe) => {
                         console.log(`Analyzing cafe ${cafe.id}...`);
-                        await analysisService.analyzeReviews(cafe);
+                        try {
+                            await analysisService.analyzeReviews(cafe);
+                            analyzedCafes.add(cafe.id);
+                            return cafe.id;
+                        } catch (error) {
+                            console.error(`Error analyzing cafe ${cafe.id}:`, error);
+                            return null;
+                        }
                     })
                 );
+                
+                // Log batch results
+                const successfulAnalyses = results.filter(
+                    (r): r is PromiseFulfilledResult<string> => 
+                        r.status === 'fulfilled' && r.value !== null
+                ).length;
+                console.log(`Batch complete: ${successfulAnalyses}/${batch.length} successful`);
             }
         }
 
+        // Only return cafes that have been successfully analyzed
+        cafes = cafes.filter(cafe => analyzedCafes.has(cafe.id));
+
         // 6. Get scored and ranked recommendations
         console.log('Getting recommendations...');
-        const rankedCafes = await recommendationService.getRecommendations(
+        const rankedResults = await recommendationService.getRecommendations(
             coordinates.lat,
             coordinates.lng,
             { mood, location, requirements },
             5
-        )
-        console.log(`Got ${rankedCafes.length} recommendations`);
+        );
+        console.log(`Got ${rankedResults.recommendations.length} recommendations and ${rankedResults.otherCafes.length} other cafes`);
 
-        if (!rankedCafes.length) {
+        if (!rankedResults.recommendations.length) {
             return new Response(
                 JSON.stringify({ error: 'No cafes match your preferences' }), 
                 { status: 404 }
@@ -285,32 +338,43 @@ export const POST: RequestHandler = async ({ request }) => {
         }
 
         // 7. Create prompt using ranked data
-        const prompt = `Act as a knowledgeable local café expert. I have analyzed and ranked ${rankedCafes.length} best matching cafes in ${location} based on:
+        const prompt = `Act as a local café expert. Create recommendations for cafes in ${location} matching these criteria:
+- Vibe: ${mood}
+- Requirements: ${requirements.join(', ')}
 
-Desired Vibe: ${mood}
+Format each recommendation EXACTLY like this example, with no extra text or sections:
 
-For each café, provide a recommendation in this exact format (including the ### separators):
+[TOP RECOMMENDATION]
+Name: Example Cafe - $$ (500m)
+Description: This bright, contemporary space offers artisanal coffee and fresh pastries. The minimalist design features floor-to-ceiling windows and comfortable seating, creating an ideal environment for both focused work and casual conversations.
+Features: Modern decor, Specialty coffee, Fast wifi, Comfortable seating
+Best For: Working remotely, Meeting friends
 
-###
-Name: [Cafe Name] - [Price Level] ([Distance] meters)
-Description: [2-3 sentences about atmosphere and offerings]
-Features: [List key features and amenities that match requirements]
-Best For: [Specific use cases like working, meetings, casual hangout]
-###
+Use this cafe data to create ${rankedResults.recommendations.length} recommendations (distances in meters):
 
-Important:
-1. Keep recommendations concise and factual
-2. Include EXACT distance in meters from the data
-3. Use the exact price level from the data
-4. Separate each recommendation with ###
-5. Start each field with the exact labels shown above
-6. Focus on features that match the user's requirements
-7. ALWAYS provide exactly 5 recommendations
-8. Do not include any text before the first ### or after the last ###
-9. Ensure each recommendation follows the exact format with all fields
+${JSON.stringify(rankedResults.recommendations.map(cafe => ({
+    name: cafe.name,
+    price_level: cafe.price_level || '$',
+    distance: Math.round(cafe.distance),
+    vibe_scores: cafe.vibe_scores,
+    amenity_scores: cafe.amenity_scores,
+    description: cafe.description,
+    photos: cafe.photos
+})), null, 2)}
 
-Here is the cafe data to use:
-${JSON.stringify(rankedCafes, null, 2)}`
+Important notes:
+1. Start EACH recommendation with [TOP RECOMMENDATION] on its own line
+2. Include EXACTLY these four fields for each cafe in this order: Name, Description, Features, Best For
+3. Format each cafe name EXACTLY as: "[Name] - [Price] ([Distance]m)"
+4. Write detailed, specific descriptions that:
+   - Describe the actual atmosphere based on the vibe scores (e.g. cozy, modern, artistic)
+   - Mention notable amenities from the amenity scores
+   - Include details about the space and ambiance
+   - Are at least 2 sentences long
+5. List specific features based on the cafe's actual vibe scores and amenities
+6. Focus on the cafe's strongest features that match the user's preferences
+7. Do not add any extra text, sections, or explanations between recommendations
+8. Create exactly ${rankedResults.recommendations.length} recommendations, one for each cafe in the data`;
 
         // 8. Stream recommendations
         const payload: OpenAIPayload = {
@@ -325,21 +389,23 @@ ${JSON.stringify(rankedCafes, null, 2)}`
             n: 1
         }
 
-        const stream = await OpenAIStream(payload)
-        return new Response(stream)
+        try {
+            const stream = await OpenAIStream(payload)
+            return new Response(stream)
+        } catch (error) {
+            console.error('Error generating recommendations:', error);
+            return new Response(
+                JSON.stringify({ 
+                    error: 'Failed to generate recommendations',
+                    details: error instanceof Error ? error.message : 'Unknown error'
+                }), 
+                { status: 500 }
+            )
+        }
 
     } catch (error) {
-        console.error('Error:', error)
-        return new Response(
-            JSON.stringify({ 
-                error: 'Failed to get recommendations',
-                details: error instanceof Error ? error.message : 'Unknown error'
-            }), 
-            {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' }
-            }
-        )
+        console.error('Error processing request:', error);
+        throw error; // Let the outer handler deal with it
     }
 }
 
@@ -392,4 +458,16 @@ async function OpenAIStream(payload: OpenAIPayload): Promise<ReadableStream> {
     })
 
     return stream
+}
+
+// Add retry logic for external API calls
+async function retryableRequest(fn: () => Promise<any>, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (error) {
+            if (i === retries - 1) throw error;
+            await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        }
+    }
 }

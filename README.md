@@ -14,85 +14,212 @@ An AI-powered café recommendation engine that finds your perfect café based on
 
 ## 📚 Table of Contents
 - [About](#-about)
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
+- [System Design](#-system-design)
+- [Data Flow](#-data-flow)
+- [Recommendation Engine](#-recommendation-engine)
+- [Technical Implementation](#-technical-implementation)
 - [Getting Started](#-getting-started)
-- [Architecture](#-architecture)
-- [API Documentation](#-api-documentation)
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
 - [License](#-license)
 
 ## 🎯 About
 
-QuickCafé revolutionizes how you find the perfect café. Using AI, we analyze café reviews and data to understand the true vibe and amenities of each location, helping you find exactly what you're looking for.
+QuickCafé revolutionizes café discovery by combining location data with AI-powered analysis of café vibes and amenities. Unlike traditional platforms that only show ratings and reviews, we understand the actual atmosphere and features of each café.
 
 ### The Problem
 Finding the right café isn't just about location - it's about finding a space that matches your mood and needs. Traditional review platforms don't capture the "vibe" or specific amenities you're looking for.
 
 ### Our Solution
-QuickCafé uses AI to:
-- Analyze thousands of reviews to understand café vibes
-- Score cafes on specific amenities and features
-- Match your mood and requirements to the perfect spot
-- Provide real-time, personalized recommendations
+QuickCafé uses AI to analyze thousands of reviews and data points to understand café characteristics and match them to your preferences.
 
-## ✨ Features
+## 🏗 System Design
 
-### Current Features
+### Architecture Components
 
-#### 🎯 Smart Search
-- Location-based café discovery
-- Mood-based filtering (cozy, modern, quiet, lively, artistic, traditional, industrial)
-- Amenity requirements (wifi, outdoor seating, power outlets, etc.)
-- Price range filtering
+1. **Frontend (SvelteKit)**
+   - Server-side rendering for performance
+   - Real-time streaming updates
+   - Progressive web app capabilities
 
-#### 🤖 AI Analysis
-- Review analysis for vibe detection
-- Amenity confidence scoring
-- Intelligent matching algorithm
-- Real-time result streaming
+2. **Database (Supabase PostgreSQL)**
+   ```sql
+   -- Core Tables
+   cafes (
+       id UUID PRIMARY KEY,
+       google_place_id TEXT UNIQUE,
+       name TEXT,
+       location POINT,
+       price_level TEXT,
+       created_at TIMESTAMP,
+       updated_at TIMESTAMP
+   )
 
-#### ⚡ Performance
-- Location-based caching
-- Batch processing for analysis
-- Coordinate rounding for cache optimization
-- Streaming responses for better UX
+   cafe_vibes (
+       cafe_id UUID REFERENCES cafes(id),
+       vibe_category TEXT,
+       confidence_score FLOAT,
+       analyzed_at TIMESTAMP
+   )
 
-### Core Functionality
+   cafe_amenities (
+       cafe_id UUID REFERENCES cafes(id),
+       amenity TEXT,
+       confidence_score FLOAT,
+       analyzed_at TIMESTAMP
+   )
+   ```
 
-#### 1. Vibe Detection
-```typescript
-type Vibe = 
-  | "cozy"      // Warm, comfortable atmosphere
-  | "modern"    // Contemporary design and feel
-  | "quiet"     // Low noise, good for focus
-  | "lively"    // Energetic, social atmosphere
-  | "artistic"  // Creative, unique space
-  | "traditional" // Classic café experience
-  | "industrial" // Warehouse/modern industrial design
-```
+3. **Caching (Upstash Redis)**
+   - Location-based caching with 24-hour TTL
+   - Cache key format: `location:{lat}:{lng}:{price_range}`
+   - 5km radius coverage per cache entry
+   - Coordinate rounding to 4 decimal places for better cache hits
 
-#### 2. Amenity Scoring
-```typescript
-type Amenity = 
-  | "wifi"              // Internet connectivity
-  | "outdoor_seating"   // Outdoor space
-  | "power_outlets"     // Charging availability
-  | "pet_friendly"      // Allows pets
-  | "parking"           // Parking availability
-  | "workspace_friendly" // Good for working
-  | "food_menu"         // Food options
-```
+## 🔄 Data Flow
 
-## 🛠 Tech Stack
+1. **Initial Search**
+   ```mermaid
+   sequenceDiagram
+       User->>+Server: Search Request
+       Server->>+Redis: Check Cache
+       Redis-->>-Server: Cache Hit/Miss
+       Server->>+Google: If Cache Miss
+       Google-->>-Server: Places Data
+       Server->>+DB: Store New Places
+       DB-->>-Server: Confirmation
+       Server->>+OpenAI: Analyze Reviews
+       OpenAI-->>-Server: Vibe/Amenity Scores
+       Server->>+DB: Store Analysis
+       DB-->>-Server: Confirmation
+       Server-->>-User: Stream Results
+   ```
 
-- **Frontend**: SvelteKit, TailwindCSS
-- **Backend**: SvelteKit (Server-side)
-- **Database**: Supabase (PostgreSQL)
-- **Caching**: Upstash Redis
-- **AI/ML**: OpenAI GPT-4
-- **APIs**: Google Places API
+2. **Data Processing Pipeline**
+   - Geocode location → 5km radius search
+   - Filter and deduplicate results
+   - Batch process reviews (3 cafes at a time)
+   - Store results in PostgreSQL
+   - Cache location results in Redis
+
+## 🎯 Recommendation Engine
+
+### Scoring System
+
+1. **Vibe Scoring (40% weight)**
+   ```typescript
+   interface VibeScore {
+       primary: number;      // Direct mood match (0-1)
+       secondary: number;    // Complementary vibes bonus (0.7 weight)
+       final: number;       // Combined vibe score
+   }
+   ```
+
+2. **Complementary Vibes Map**
+   ```typescript
+   const vibeRelations = {
+       cozy: ['quiet', 'traditional'],
+       modern: ['artistic', 'industrial'],
+       quiet: ['cozy', 'traditional'],
+       lively: ['modern', 'artistic'],
+       artistic: ['modern', 'industrial'],
+       traditional: ['cozy', 'quiet'],
+       industrial: ['modern', 'artistic']
+   }
+   ```
+
+3. **Scoring Weights**
+   ```typescript
+   const weights = {
+       vibe: 0.4,        // Primary factor
+       amenity: 0.3,     // Required features
+       distance: 0.2,    // Location proximity
+       price: 0.1        // Price match
+   }
+   ```
+
+4. **Final Score Calculation**
+   ```typescript
+   finalScore = (
+       vibeScore * weights.vibe +
+       amenityScore * weights.amenity +
+       distanceScore * weights.distance +
+       priceScore * weights.price
+   )
+   ```
+
+### Ranking Process
+
+1. **Initial Filtering**
+   - Location-based search within 5km
+   - Price range filter (if specified)
+   - Basic amenity requirements
+
+2. **Score Calculation**
+   - Direct vibe match
+   - Complementary vibe bonuses (0.7 weight)
+   - Amenity match scoring (0.5 default for missing scores)
+   - Distance penalty calculation
+   - Price match scoring (0.3 for near matches)
+
+3. **Result Ranking**
+   - Sort by final score
+   - Return top 5 recommendations
+   - Include up to 15 other options
+
+### Recent Improvements
+
+1. **Enhanced Scoring**
+   - More lenient complementary vibe scoring (0.7 weight)
+   - Default amenity scores (0.5) for missing data
+   - Improved price matching with partial scores
+   - Better handling of missing scores
+
+2. **Detailed Descriptions**
+   - Rich, contextual café descriptions
+   - Atmosphere details based on vibe scores
+   - Notable amenity highlights
+   - Specific space and ambiance information
+
+3. **UI Improvements**
+   - Consistent recommendation display
+   - Clear feature highlighting
+   - Better distance and price visibility
+   - Improved recommendation parsing
+
+## 🛠 Technical Implementation
+
+### API Endpoints
+
+1. **Recommendation API**
+   ```typescript
+   POST /api/getRecommendation
+   {
+       location: string,      // e.g., "San Francisco"
+       mood: VibeCategory,    // e.g., "cozy"
+       priceRange?: string,   // "$" to "$$$"
+       requirements?: string[] // e.g., ["wifi", "outdoor_seating"]
+   }
+   ```
+
+2. **Response Streaming**
+   - Server-sent events for real-time updates
+   - Progress indicators during analysis
+   - Chunked recommendation delivery
+
+### Optimization Techniques
+
+1. **Cache Strategy**
+   - Geospatial indexing
+   - Coordinate rounding for cache efficiency
+   - 24-hour TTL with manual invalidation
+   - Batch processing for analysis
+
+2. **Performance**
+   - Parallel processing of café analysis
+   - Efficient PostgreSQL queries
+   - Streaming responses
+   - Edge function deployment
 
 ## 🚀 Getting Started
 
@@ -141,137 +268,74 @@ npm run db:setup
 npm run dev
 ```
 
-## 🏗 Architecture
-
-### System Overview
-```mermaid
-graph TD
-    A[Browser] -->|1. Search Request| B[SvelteKit Server]
-    B -->|2. Check Cache| C[Redis]
-    C -->|3a. Return Cached IDs| B
-    C -->|3b. Cache Miss| B
-    B -->|4. Search Cafes| D[Google Places API]
-    D -->|5. Return Cafe Data| B
-    B -->|6a. Store New Cafes| E[Postgres]
-    B -->|6b. Check Existing Analysis| E
-    E -->|7a. Return Analysis| B
-    B -->|7b. Missing Analysis| F[OpenAI API]
-    F -->|8. Return Analysis| B
-    B -->|9. Store Analysis| E
-    B -->|10. Stream Results| A
-```
-
-### Database Schema
-```mermaid
-erDiagram
-    cafes {
-        UUID id PK
-        TEXT google_place_id UK
-        TEXT name
-        POINT location
-        TEXT price_level
-        TIMESTAMP created_at
-        TIMESTAMP updated_at
-    }
-    cafe_vibes {
-        UUID cafe_id FK
-        TEXT vibe_category
-        FLOAT confidence_score
-        TIMESTAMP analyzed_at
-    }
-    cafe_amenities {
-        UUID cafe_id FK
-        TEXT amenity
-        FLOAT confidence_score
-        TIMESTAMP analyzed_at
-    }
-    cafes ||--o{ cafe_vibes : has
-    cafes ||--o{ cafe_amenities : has
-```
-
-## 🔄 Caching Strategy
-
-### Location Cache
-- **Key Format**: `location:{lat}:{lng}:{price_range}`
-- **Value**: Array of café IDs
-- **TTL**: 1 hour
-- **Radius**: 5km
-- **Coordinate Precision**: 4 decimal places
-
-### Analysis Cache
-- Stored in Postgres
-- No expiration (manually invalidated)
-- Batch processing (3 cafes at a time)
-
-## 🎯 Recommendation Algorithm
-
-### Scoring Factors
-1. **Vibe Match** (0-100%)
-   - Direct match with requested mood
-   - Secondary vibe compatibility
-
-2. **Amenity Requirements** (20% each)
-   - Each matched requirement adds 20%
-   - Confidence score affects match quality
-
-3. **Distance Penalty**
-   - -5% per kilometer from target location
-   - Max penalty: 50%
-
-### Final Score Calculation
-```typescript
-const finalScore = (
-  (vibeMatchScore + (matchedRequirements * 0.2)) * 
-  (1 - Math.min(distanceKm * 0.05, 0.5))
-).toFixed(2)
-```
-
 ## 🛣 Roadmap
 
 ### Phase 1: Core Features ✅
-- [x] Basic café search
-- [x] Mood-based filtering
-- [x] Amenity detection
-- [x] Distance-based results
-- [x] Caching system
+- [x] Basic café search with Google Places API
+- [x] AI-powered vibe and amenity analysis
+- [x] Location-based caching with Redis
+- [x] Real-time recommendation streaming
+- [x] Smart scoring and ranking system
 
-### Phase 2: User Features 🚧
-- [ ] User accounts
-- [ ] Saved favorites
-- [ ] Personal preferences
-- [ ] Search history
-- [ ] Custom lists
-
-### Phase 3: Enhanced Analysis 📋
+### Phase 2: Enhanced Analysis 🚧
 - [ ] Time-based recommendations
 - [ ] Crowd level prediction
-- [ ] Noise level analysis
 - [ ] Photo-based vibe analysis
-- [ ] Menu analysis
+- [ ] Menu analysis and categorization
+- [ ] Price analysis for better matching
 
-### Phase 4: Social Features 🎯
-- [ ] User reviews
-- [ ] Shared lists
+### Phase 3: User Features 📋
+- [ ] User accounts and profiles
+- [ ] Personalized recommendations
+- [ ] Favorite cafés and lists
+- [ ] Search history
+- [ ] Personal preferences storage
+
+### Phase 4: Social Features 🤝
+- [ ] User reviews and ratings
+- [ ] Shared café lists
 - [ ] Social recommendations
 - [ ] Community contributions
 - [ ] Café owner verification
 
-### Phase 5: Advanced Features 🔮
-- [ ] Real-time occupancy
-- [ ] Table reservations
-- [ ] Mobile app
+### Phase 5: Advanced Features 🚀
+- [ ] Real-time occupancy tracking
+- [ ] Table/space reservations
+- [ ] Mobile app development
 - [ ] Offline support
-- [ ] API marketplace
+- [ ] API marketplace for developers
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions! Here's how you can help:
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. **Code Contributions**
+   ```bash
+   # Fork and clone
+   git clone https://github.com/yourusername/quickcafe.git
+   cd quickcafe
+
+   # Create branch
+   git checkout -b feature/amazing-feature
+
+   # Commit changes
+   git commit -m 'Add amazing feature'
+
+   # Push and create PR
+   git push origin feature/amazing-feature
+   ```
+
+2. **Development Guidelines**
+   - Follow TypeScript best practices
+   - Add tests for new features
+   - Update documentation
+   - Follow existing code style
+
+3. **Bug Reports**
+   - Use the issue tracker
+   - Include reproduction steps
+   - Attach relevant logs
+   - Specify your environment
 
 ## 📄 License
 

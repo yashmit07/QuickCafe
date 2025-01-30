@@ -54,10 +54,13 @@
         incomingStream += new TextDecoder().decode(value);
       }
 
+      console.log('Raw incoming stream:', incomingStream);
+
       recommendations = incomingStream
-        .split('###')
+        .split('[TOP RECOMMENDATION]')
         .filter(text => text.trim())
         .map(text => {
+          console.log('Parsing recommendation text:', text);
           const lines = text.trim().split('\n');
           const recommendation: any = {};
           
@@ -65,6 +68,7 @@
             const [key, ...valueParts] = line.split(':');
             if (valueParts.length > 0) {
               const value = valueParts.join(':').trim();
+              console.log('Parsing line:', { key: key.trim().toLowerCase(), value });
               switch(key.trim().toLowerCase()) {
                 case 'name':
                   recommendation.name = value;
@@ -78,13 +82,26 @@
                 case 'best for':
                   recommendation.bestFor = value;
                   break;
+                // Add fallbacks for missing fields
+                default:
+                  console.log('Unknown key:', key.trim().toLowerCase());
+                  break;
               }
             }
           });
           
+          // Set default values for missing fields
+          recommendation.description = recommendation.description || 'A lovely local café';
+          recommendation.features = recommendation.features || 'Local café';
+          recommendation.bestFor = recommendation.bestFor || 'Casual visits';
+          
+          console.log('Parsed recommendation:', recommendation);
           return recommendation;
         })
-        .filter(rec => rec.name && rec.description && rec.features && rec.bestFor);
+        // Only filter out recommendations without a name
+        .filter(rec => rec.name);
+
+      console.log('Final recommendations:', recommendations);
 
     } catch (error: any) {
       console.error('Error:', error);

@@ -4,8 +4,8 @@ import { supabase } from '$lib/db/supabase'
 
 interface ScoredCafe extends Cafe {
     distance: number;
-    vibe_scores: Record<VibeCategory, number>;
-    amenity_scores: Record<AmenityType, number>;
+    vibe_scores: Record<string, number>;
+    amenity_scores: Record<string, number>;
     _score?: number;
 }
 
@@ -16,45 +16,29 @@ interface ScoreWeights {
     price: number;
 }
 
-interface VibeScore {
-    vibe_category: VibeCategory;
-    confidence_score: number;
-}
-
-interface AmenityScore {
-    amenity: AmenityType;
-    confidence_score: number;
-}
-
-interface CafeWithDistance extends Cafe {
-    distance: number;
-}
-
-interface CafeWithBasicInfo {
-    id: string;
-    name: string;
-    price_level: PriceLevel;
-    distance: number;
-    _score?: number;
+interface RecommendationResults {
+    recommendations: ScoredCafe[];
+    otherCafes: ScoredCafe[];
 }
 
 export class RecommendationService {
     private readonly WEIGHTS: ScoreWeights = {
-        vibe: 0.4,
-        amenity: 0.3,
-        distance: 0.2,
-        price: 0.1
+        vibe: 0.35,
+        amenity: 0.25,
+        distance: 0.25,
+        price: 0.15
     };
 
-    private readonly MAX_PREFERRED_DISTANCE = 2000; // 2km
+    private readonly MAX_PREFERRED_DISTANCE = 5000; // 5km
 
-    private readonly VIBE_MAPPINGS: Record<string, VibeCategory[]> = {
-        'relaxed': ['cozy', 'quiet'],
-        'productive': ['quiet', 'modern'],
-        'social': ['lively', 'artistic'],
-        'inspiring': ['artistic', 'modern'],
-        'traditional': ['traditional', 'cozy'],
-        'trendy': ['modern', 'industrial']
+    private readonly COMPLEMENTARY_VIBES: Record<VibeCategory, VibeCategory[]> = {
+        cozy: ['quiet', 'traditional'],
+        modern: ['artistic', 'industrial', 'lively'],
+        quiet: ['cozy', 'traditional'],
+        lively: ['modern', 'artistic'],
+        artistic: ['modern', 'industrial', 'lively'],
+        traditional: ['cozy', 'quiet'],
+        industrial: ['modern', 'artistic']
     } as const;
 
     /**
@@ -65,7 +49,7 @@ export class RecommendationService {
         lng: number,
         request: CafeRequest,
         limit: number = 20
-    ): Promise<ScoredCafe[]> {
+    ): Promise<RecommendationResults> {
         try {
             console.log('Getting recommendations for:', { lat, lng, request, limit });
 
@@ -102,14 +86,31 @@ export class RecommendationService {
                 _score: this.calculateScore(
                     cafe,
                     request.mood,
-                    request.requirements,
+                    request.requirements || [],
                     cafe.distance,
                     request.priceRange
                 )
             }));
 
-            // Sort by score and return results
-            return scoredCafes.sort((a, b) => (b._score || 0) - (a._score || 0));
+            // Sort all cafes by score
+            const sortedCafes = [...scoredCafes].sort((a, b) => (b._score || 0) - (a._score || 0));
+
+            // Get top 5 recommendations and next 15 other cafes
+            const recommendations = sortedCafes.slice(0, 5);
+            const otherCafes = sortedCafes.slice(5, 20);
+
+            console.log(`Got ${recommendations.length} recommendations and ${otherCafes.length} other cafes`);
+            
+            // Log the recommendations for debugging
+            console.log('Top recommendations:', recommendations.map(cafe => ({
+                name: cafe.name,
+                score: cafe._score,
+                vibeScores: cafe.vibe_scores,
+                amenityScores: cafe.amenity_scores,
+                distance: cafe.distance
+            })));
+
+            return { recommendations, otherCafes };
         } catch (error) {
             console.error('Error getting recommendations:', error);
             throw error;
@@ -124,27 +125,71 @@ export class RecommendationService {
         priceRange?: string
     ): number {
         // Calculate vibe score
-        const vibeScore = cafe.vibe_scores[targetMood] || 0;
+        const vibeScores = cafe.vibe_scores || {};
+        console.log(`Raw vibe scores for ${cafe.name}:`, vibeScores);
+        
+        // Direct vibe score for target mood
+        const directVibeScore = vibeScores[targetMood] || 0;
+        console.log(`Direct ${targetMood} score for ${cafe.name}:`, directVibeScore);
+        
+        // Get complementary vibes for additional scoring
+        const complementaryVibes = this.COMPLEMENTARY_VIBES[targetMood as VibeCategory] || [];
+        const complementaryScores = complementaryVibes.map(vibe => vibeScores[vibe] || 0);
+        
+        // More generous complementary scoring - use 80% of complementary vibe scores
+        const complementaryScore = complementaryScores.length > 0
+            ? complementaryScores.reduce((sum, score) => sum + score, 0) * 0.8 / complementaryScores.length
+            : 0;
+        console.log(`Complementary vibe score for ${cafe.name}:`, complementaryScore);
+
+        // Use weighted combination of direct and complementary scores
+        const totalVibeScore = directVibeScore > 0 
+            ? directVibeScore 
+            : complementaryScore > 0 
+                ? complementaryScore 
+                : 0.3; // Base score for any cafe
+        console.log(`Total vibe score for ${cafe.name}:`, totalVibeScore);
 
         // Calculate amenity score (average of required amenities)
-        const amenityScores = requirements.map(req => cafe.amenity_scores[req] || 0);
-        const amenityScore = amenityScores.length
-            ? amenityScores.reduce((a, b) => a + b, 0) / amenityScores.length
+        const amenityScores = cafe.amenity_scores || {};
+        const amenityMatchScores = requirements.map(req => {
+            const score = amenityScores[req] || 0;
+            console.log(`Amenity ${req} score for ${cafe.name}:`, score);
+            return score;
+        });
+        
+        // More lenient amenity scoring - if no scores, assume neutral
+        const amenityScore = amenityMatchScores.length
+            ? amenityMatchScores.reduce((a, b) => a + b, 0) / amenityMatchScores.length || 0.4
             : 1; // If no requirements, give full score
 
         // Calculate distance score (inverse relationship - closer is better)
         const distanceScore = Math.max(0, 1 - (distance / this.MAX_PREFERRED_DISTANCE));
 
-        // Calculate price score (exact match = 1, one level difference = 0.5, otherwise 0)
+        // Calculate price score (exact match = 1, one level difference = 0.7, otherwise 0.4)
         const priceScore = this.calculatePriceScore(cafe.price_level, priceRange);
 
         // Calculate final weighted score
-        return (
-            this.WEIGHTS.vibe * vibeScore +
+        const score = (
+            this.WEIGHTS.vibe * totalVibeScore +
             this.WEIGHTS.amenity * amenityScore +
             this.WEIGHTS.distance * distanceScore +
             this.WEIGHTS.price * priceScore
         );
+
+        console.log(`Scoring cafe ${cafe.name}:`, {
+            vibeScore: totalVibeScore,
+            amenityScore,
+            distanceScore,
+            priceScore,
+            finalScore: score,
+            rawVibeScores: vibeScores,
+            rawAmenityScores: amenityScores,
+            targetMood,
+            requirements
+        });
+
+        return score;
     }
 
     /**
@@ -166,91 +211,7 @@ export class RecommendationService {
         const targetPriceNum = priceToNumber(targetPrice);
         const priceDiff = Math.abs(cafePriceNum - targetPriceNum);
 
-        // Exact match = 1, one level difference = 0.5, otherwise 0
-        return priceDiff === 0 ? 1 : priceDiff === 1 ? 0.5 : 0;
-    }
-
-    private processVibeScores(vibeData: VibeScore[]): Record<VibeCategory, number> {
-        const scores: Partial<Record<VibeCategory, number>> = {};
-        vibeData.forEach(({ vibe_category, confidence_score }) => {
-            scores[vibe_category] = confidence_score;
-        });
-        return scores as Record<VibeCategory, number>;
-    }
-
-    private processAmenityScores(amenityData: AmenityScore[]): Record<AmenityType, number> {
-        const scores: Partial<Record<AmenityType, number>> = {};
-        amenityData.forEach(({ amenity, confidence_score }) => {
-            scores[amenity] = confidence_score;
-        });
-        return scores as Record<AmenityType, number>;
-    }
-
-    private rankCafes(cafes: ScoredCafe[], request: CafeRequest): ScoredCafe[] {
-        return cafes
-            .map(cafe => ({
-                ...cafe,
-                _score: this.calculateTotalScore(cafe, request)
-            }))
-            .sort((a, b) => (b._score ?? 0) - (a._score ?? 0))
-            .slice(0, 5);
-    }
-
-    /**
-     * Calculate the overall score for a cafe based on user preferences
-     */
-    private calculateTotalScore(cafe: ScoredCafe, request: CafeRequest): number {
-        const scores = {
-            vibe: this.calculateVibeScore(cafe.vibe_scores, request.mood),
-            amenity: this.calculateAmenityScore(cafe.amenity_scores, request.requirements),
-            distance: this.calculateDistanceScore(cafe.distance)
-        };
-
-        return Object.entries(scores)
-            .reduce((total, [key, score]) => 
-                total + score * this.WEIGHTS[key as keyof ScoreWeights], 0);
-    }
-
-    /**
-     * Calculate how well cafe vibes match desired mood
-     */
-    private calculateVibeScore(
-        vibeScores: Record<VibeCategory, number>,
-        mood: string
-    ): number {
-        // Direct match with the selected mood
-        const directScore = vibeScores[mood.toLowerCase() as VibeCategory] || 0;
-        
-        // Also check mapped vibes if they exist
-        const mappedVibes = this.VIBE_MAPPINGS[mood.toLowerCase()] || [];
-        const mappedScores = mappedVibes.map(vibe => vibeScores[vibe] || 0);
-        const mappedScore = mappedScores.length 
-            ? mappedScores.reduce((sum, score) => sum + score, 0) / mappedScores.length
-            : 0;
-
-        // Use the better of the two scores
-        return Math.max(directScore, mappedScore);
-    }
-
-    /**
-     * Calculate how well cafe amenities match requirements
-     */
-    private calculateAmenityScore(
-        amenityScores: Record<AmenityType, number>,
-        requirements: string[]
-    ): number {
-        if (!requirements.length) return 1;
-
-        const scores = requirements.map(req => 
-            amenityScores[req as AmenityType] || 0
-        );
-        return scores.reduce((sum, score) => sum + score, 0) / requirements.length;
-    }
-
-    /**
-     * Calculate distance-based score (closer is better)
-     */
-    private calculateDistanceScore(distanceMeters: number): number {
-        return Math.max(0, 1 - (distanceMeters / this.MAX_PREFERRED_DISTANCE));
+        // More lenient price scoring
+        return priceDiff === 0 ? 1 : priceDiff === 1 ? 0.7 : 0.4;
     }
 }

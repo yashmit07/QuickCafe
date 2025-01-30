@@ -36,8 +36,10 @@ CREATE TABLE IF NOT EXISTS cafes (
     location GEOGRAPHY(POINT, 4326) NOT NULL,
     address TEXT NOT NULL,
     price_level price_level,
-    reviews JSONB[],
-    last_review_fetch TIMESTAMPTZ DEFAULT NOW(),
+    reviews JSONB,
+    operating_hours JSONB,
+    photos JSONB,
+    last_review_fetch TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -45,16 +47,16 @@ CREATE TABLE IF NOT EXISTS cafes (
 CREATE TABLE IF NOT EXISTS cafe_amenities (
     cafe_id UUID REFERENCES cafes(id) ON DELETE CASCADE,
     amenity amenity_type NOT NULL,
-    confidence_score DECIMAL(4,3),
-    last_analyzed TIMESTAMPTZ DEFAULT NOW(),
+    confidence_score NUMERIC,
+    last_analyzed TIMESTAMPTZ,
     PRIMARY KEY (cafe_id, amenity)
 );
 
 CREATE TABLE IF NOT EXISTS cafe_vibes (
     cafe_id UUID REFERENCES cafes(id) ON DELETE CASCADE,
     vibe_category vibe_category NOT NULL,
-    confidence_score DECIMAL(4,3),
-    last_analyzed TIMESTAMPTZ DEFAULT NOW(),
+    confidence_score NUMERIC,
+    last_analyzed TIMESTAMPTZ,
     PRIMARY KEY (cafe_id, vibe_category)
 );
 
@@ -88,3 +90,25 @@ DO $$ BEGIN
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
+
+-- Add transaction management functions
+CREATE OR REPLACE FUNCTION begin_transaction() RETURNS void AS $$
+BEGIN
+    -- Start a new transaction
+    BEGIN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION commit_transaction() RETURNS void AS $$
+BEGIN
+    -- Commit the current transaction
+    COMMIT;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION rollback_transaction() RETURNS void AS $$
+BEGIN
+    -- Rollback the current transaction
+    ROLLBACK;
+END;
+$$ LANGUAGE plpgsql;

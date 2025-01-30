@@ -23,18 +23,9 @@ export interface Cafe {
     location: any // PostGIS point
     address: string
     price_level: PriceLevel
-    reviews: any[]
-    operating_hours: {
-        [day: string]: {
-            open: string
-            close: string
-        }
-    } | null
-    photos: {
-        url: string
-        width: number
-        height: number
-    }[]
+    reviews: any // JSONB
+    operating_hours: any // JSONB
+    photos: any // JSONB
     last_review_fetch: string
     created_at?: string
     updated_at?: string
