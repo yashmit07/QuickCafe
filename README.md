@@ -14,11 +14,11 @@ QuickCafé provides café discovery by combining location data with AI-powered a
 Finding the right café isn't just about location - it's about finding a space that matches your mood and needs. Traditional review platforms don't capture the "vibe" or specific amenities you're looking for.
 
 ### Our Solution
-QuickCafé uses AI to analyze thousands of reviews and data points to understand café characteristics and match them to your preferences. Our system employs:
-- Advanced NLP for review analysis
-- Multi-dimensional scoring algorithms
-- Real-time data processing
-- Intelligent caching mechanisms
+QuickCafé uses GPT-4 to analyze café reviews and details to understand their unique characteristics and match them to your preferences. Our system employs:
+- Direct review analysis using GPT-4
+- Smart scoring algorithms
+- Real-time streaming responses
+- Location-based caching
 
 ## ✨ Core Features
 
@@ -138,234 +138,103 @@ class GeospatialCache {
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant S as SvelteKit Server
-    participant R as Redis Cache
-    participant G as Google Places API
-    participant O as OpenAI
-    participant DB as Supabase
+    participant F as Frontend
+    participant C as Cache
+    participant G as Google Places
+    participant A as AI Analysis
+    participant D as Database
 
-    U->>+S: Search Request
-    S->>+R: Check Cache
-    R-->>-S: Cache Hit/Miss
-    
+    U->>+F: Search Request
+    F->>+C: Check Cache
+    C-->>-F: Cache Hit/Miss
+
     alt Cache Miss
-        S->>+G: Fetch Places
-        G-->>-S: Places Data
-        S->>+DB: Store Places
-        DB-->>-S: Confirmation
+        F->>+G: Fetch Nearby Cafés
+        G-->>-F: Location Data
         
-        par Parallel Processing
-            S->>+O: Analyze Reviews (Batch 1)
-            O-->>-S: Analysis Results
-            S->>+O: Analyze Reviews (Batch 2)
-            O-->>-S: Analysis Results
-            S->>+O: Analyze Reviews (Batch 3)
-            O-->>-S: Analysis Results
+        par Process Each Café
+            F->>+A: Analyze Vibe & Features
+            A-->>-F: Café Analysis
+            F->>+D: Store Results
+            D-->>-F: Confirmation
         end
-        
-        S->>+DB: Store Analysis
-        DB-->>-S: Confirmation
-        S->>+R: Update Cache
-        R-->>-S: Confirmation
+
+        F->>+C: Update Cache
+        C-->>-F: Confirmation
     end
-    
+
     loop Stream Results
-        S-->>U: Stream Recommendation
-        Note over S,U: Server-Sent Events
+        F-->>U: Send Recommendation
+        Note over F,U: Real-time Updates
     end
 ```
 
-### API Documentation
+### How it Works
 
-#### 1. Recommendation Endpoint
-```typescript
-/**
- * Get café recommendations based on user preferences
- * @route POST /api/getRecommendation
- * @param {Object} body - Request body
- * @param {string} body.location - Location query (e.g., "San Francisco")
- * @param {VibeCategory} body.mood - Desired café vibe
- * @param {string} [body.priceRange] - Price range filter ("$" to "$$$$")
- * @param {string[]} [body.requirements] - Required amenities
- * @returns {ReadableStream} Stream of recommendations
- */
-interface RecommendationRequest {
-    location: string;
-    mood: VibeCategory;
-    priceRange?: string;
-    requirements?: string[];
-}
+1. **User Request**
+   - User submits preferences (mood, location, price)
+   - Frontend initiates search process
 
-interface Recommendation {
-    id: string;
-    name: string;
-    description: string;
-    distance: number;
-    priceLevel: string;
-    vibeScore: number;
-    amenityScore: number;
-    features: string[];
-    bestFor: string[];
-}
+2. **Cache Check**
+   - System checks Redis cache for nearby recommendations
+   - Uses geospatial indexing for fast lookups
+
+3. **Data Gathering**
+   - If cache miss, fetches café data from Google Places
+   - Processes each café in parallel for efficiency
+
+4. **AI Analysis**
+   - Analyzes café data using GPT-4
+   - Extracts vibes, features, and best-for scenarios
+
+5. **Result Streaming**
+   - Streams recommendations as they're processed
+   - Updates UI in real-time with new matches
+
+## 🔑 Environment Variables
+
+Required API keys and configurations:
+
+```env
+GOOGLE_PLACES_API_KEY=   # For location data
+OPENAI_API_KEY=         # For AI analysis
+UPSTASH_REDIS_URL=      # For caching
+SUPABASE_URL=          # Database URL
+SUPABASE_KEY=          # Database access key
 ```
 
-#### 2. Analysis Pipeline
-```typescript
-/**
- * Review Analysis Pipeline
- * Processes café reviews to extract vibes and amenities
- */
-interface ReviewAnalysis {
-    type: 'vibe' | 'amenity';
-    category: string;
-    confidence: number;
-    evidence: string[];
-}
+## 💻 Development
 
-interface AnalysisPipeline {
-    batchSize: number;
-    maxConcurrent: number;
-    retryAttempts: number;
-    confidenceThreshold: number;
-}
-```
-
-## 🎯 Recommendation Engine
-
-### Core Components
-
-1. **Vibe Scoring (40%)**
-```typescript
-class VibeScorer {
-  private readonly PRIMARY_WEIGHT = 0.7;
-  private readonly SECONDARY_WEIGHT = 0.3;
-
-  calculateScore(targetVibe: string, cafeVibes: Map<string, number>): VibeScore {
-    const primary = cafeVibes.get(targetVibe) || 0;
-    const complementary = this.getComplementaryScore(targetVibe, cafeVibes);
-
-    return {
-      primary,
-      secondary: complementary,
-      final: this.PRIMARY_WEIGHT * primary + this.SECONDARY_WEIGHT * complementary
-    };
-  }
-}
-```
-
-2. **Distance Scoring (20%)**
-```typescript
-class DistanceScorer {
-  private readonly MAX_DISTANCE = 5000; // 5km
-  private readonly DECAY_FACTOR = 0.5;
-
-  calculateScore(distanceInMeters: number): number {
-    if (distanceInMeters > this.MAX_DISTANCE) return 0;
-    return Math.exp(-this.DECAY_FACTOR * (distanceInMeters / this.MAX_DISTANCE));
-  }
-}
-```
-
-3. **Price Scoring (10%)**
-```typescript
-class PriceScorer {
-  private readonly EXACT_MATCH = 1.0;
-  private readonly ADJACENT_MATCH = 0.3;
-
-  calculateScore(target: string, actual: string): number {
-    if (target === actual) return this.EXACT_MATCH;
-    return Math.abs(target.length - actual.length) === 1 ? this.ADJACENT_MATCH : 0;
-  }
-}
-```
-
-### Score Aggregation
-```typescript
-class ScoreAggregator {
-  private readonly weights = {
-    vibe: 0.4,
-    amenity: 0.3,
-    distance: 0.2,
-    price: 0.1
-  };
-
-  calculateFinalScore(scores: {
-    vibe: number;
-    amenity: number;
-    distance: number;
-    price: number;
-  }): number {
-    return Object.entries(this.weights)
-      .reduce((total, [key, weight]) => total + (scores[key] * weight), 0);
-  }
-}
-```
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js 20.x
-- npm
-- Required API Keys:
-  ```env
-  GOOGLE_PLACES_API_KEY=   # Location data
-  OPENAI_API_KEY=         # Review analysis
-  UPSTASH_REDIS_URL=      # Caching
-  SUPABASE_URL=          # Database
-  SUPABASE_KEY=          # Auth
-  ```
-
-### Quick Start
 ```bash
-# Clone and install
-git clone https://github.com/yashmit07/quickcafe.git
-cd quickcafe
-npm install
-
-# Set up environment
-cp .env.example .env
-# Add your API keys to .env
-
-# Start development
+# Start development server
 npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Run linting
+npm run lint
 ```
-
-## 🛣 Roadmap
-
-### Current Focus
-- [x] Core recommendation engine
-- [x] Real-time streaming
-- [x] Location-based caching
-
-### Future Plans
-- User accounts and preferences
-- Social features (sharing, lists)
-- Mobile app
-- Real-time occupancy tracking
-- Table reservations
 
 ## 🤝 Contributing
 
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-### Development Guidelines
-- Follow TypeScript best practices
-- Add tests for new features
-- Update documentation
-- Follow existing code style
+Please ensure your PR:
+- Follows the existing code style
+- Includes appropriate documentation
+- Has meaningful commit messages
 
-## 📄 License
+## 📝 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+MIT License - see LICENSE for details
 
 ---
 
-<div align="center">
-
 Made with ☕ by [Yashmit Singh](https://github.com/yashmit07)
-
-</div>
