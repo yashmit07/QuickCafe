@@ -128,8 +128,9 @@
         <div class="flex justify-center">
           <button
             on:click={handleStartSearch}
-            class="px-6 py-3 rounded-full bg-[#E91E63] text-white font-medium 
-            hover:bg-[#D81B60] transition-colors"
+            class="px-6 py-3 rounded-full bg-[#E91E63] text-white font-bold text-lg
+            hover:bg-[#D81B60] transition-colors shadow-lg hover:shadow-xl transform hover:scale-105
+            tracking-wide cafe-button"
           >
             Find My Perfect Café
           </button>
@@ -165,5 +166,12 @@
 <style>
   :global(html) {
     background-color: white;
+  }
+  
+  .cafe-button {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-style: italic;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   }
 </style>
