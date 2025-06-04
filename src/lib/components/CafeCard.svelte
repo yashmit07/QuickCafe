@@ -108,7 +108,7 @@
 
     .cafe-icon {
         font-size: 2rem;
-        color: #E91E63;
+        color: #059669;
         margin-left: 1rem;
     }
 

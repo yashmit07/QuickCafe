@@ -47,14 +47,14 @@
   <div class="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300">
     <div class="p-8">
       <div class="flex gap-8">
-        <div class="w-1/4 aspect-square rounded-xl bg-gradient-to-br from-pink-50 to-pink-100 flex items-center justify-center flex-none">
+        <div class="w-1/4 aspect-square rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 flex items-center justify-center flex-none">
           <svg
             width="40"
             height="40"
             viewBox="0 0 24 24"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            class="text-pink-600"
+            class="text-emerald-600"
           >
             <path
               d="M18 8h1a4 4 0 1 1 0 8h-1"
@@ -87,7 +87,7 @@
                 {cafeName}
               </h2>
               <div class="flex items-center gap-2 text-sm">
-                <span class="text-pink-600 font-semibold">{priceLevel}</span>
+                <span class="text-emerald-600 font-semibold">{priceLevel}</span>
                 <span class="text-neutral-300">•</span>
                 <span class="text-neutral-500">{distance}</span>
                 <span class="text-neutral-300">•</span>
@@ -95,7 +95,7 @@
                   href={getGoogleMapsUrl()} 
                   target="_blank" 
                   rel="noopener noreferrer" 
-                  class="text-pink-600 hover:text-pink-700 transition-colors"
+                  class="text-emerald-600 hover:text-emerald-700 transition-colors"
                 >
                   View on Maps
                 </a>
@@ -112,7 +112,7 @@
               <h4 class="text-sm font-medium text-neutral-800 mb-2">Features</h4>
               <div class="flex flex-wrap gap-2">
                 {#each recommendation.features.split(',') as feature}
-                  <span class="px-3 py-1 rounded-full text-xs border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 transition-colors">
+                  <span class="px-3 py-1 rounded-full text-xs border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">
                     {feature.trim()}
                   </span>
                 {/each}

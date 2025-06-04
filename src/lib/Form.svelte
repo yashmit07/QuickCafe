@@ -107,7 +107,7 @@
   <div class="space-y-8">
     <div>
       <div class="mb-4">
-        <h3 class="text-xl font-semibold text-neutral-800"> What kind of vibe are you looking for? <span class="text-pink-500 text-sm">*</span> </h3>
+        <h3 class="text-xl font-semibold text-neutral-800"> What kind of vibe are you looking for? <span class="text-emerald-500 text-sm">*</span> </h3>
       </div>
       <div class="flex flex-wrap gap-2">
         {#each moodTypes as type}
@@ -115,7 +115,7 @@
             on:click={() => mood = type.value}
             class="px-4 py-2 rounded-full border transition-all
             {mood === type.value 
-              ? 'bg-pink-50 border-pink-500 text-pink-700' 
+              ? 'bg-emerald-50 border-emerald-500 text-emerald-700' 
               : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'}"
           >
             {type.label}
@@ -126,7 +126,7 @@
 
     <div>
       <div class="mb-4">
-        <h3 class="text-xl font-semibold text-neutral-800">Where are you looking to go? <span class="text-pink-500 text-sm">*</span></h3>
+        <h3 class="text-xl font-semibold text-neutral-800">Where are you looking to go? <span class="text-emerald-500 text-sm">*</span></h3>
       </div>
       <div class="space-y-2">
         <input
@@ -134,7 +134,7 @@
           bind:value={location}
           on:blur={validateLocation}
           class="w-full px-4 py-3 rounded-xl border border-neutral-200 
-          focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none
+          focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none
           placeholder:text-neutral-400 text-neutral-900
           {locationError ? 'border-red-500' : ''}"
           placeholder="Enter a city name (e.g. San Francisco, CA)"
@@ -155,7 +155,7 @@
             on:click={() => priceRange = range.value}
             class="px-6 py-3 rounded-full border transition-all text-center
             {priceRange === range.value 
-              ? 'bg-pink-50 border-pink-500 text-pink-700' 
+              ? 'bg-emerald-50 border-emerald-500 text-emerald-700' 
               : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'}"
           >
             <div class="font-bold">{range.value}</div>
@@ -174,7 +174,7 @@
           <label
             class="px-4 py-2 rounded-full border cursor-pointer transition-all
             {requirements.includes(type.value)
-              ? 'bg-pink-50 border-pink-500 text-pink-700'
+              ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
               : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'}"
           >
             <input
@@ -196,7 +196,7 @@
       class="w-full py-4 rounded-xl font-semibold transition-all
       {loading || !location || !mood
         ? 'bg-neutral-100 text-neutral-400'
-        : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white hover:from-pink-700 hover:to-pink-600'}"
+        : 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-700 hover:to-emerald-600'}"
     >
       {#if loading}
         <LoadingIndicator />
@@ -206,7 +206,7 @@
     </button>
 
     {#if !mood || !location}
-      <div class="text-sm text-pink-500 text-center">
+      <div class="text-sm text-emerald-500 text-center">
         * Required fields must be filled
       </div>
     {/if}
