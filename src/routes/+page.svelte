@@ -128,9 +128,14 @@
         <div class="flex justify-center">
           <button
             on:click={handleStartSearch}
-            class="px-6 py-3 rounded-full bg-[#E91E63] text-white font-semibold 
-            hover:bg-[#D81B60] transition-colors text-lg tracking-wide"
-            style="font-family: 'Georgia', 'Times New Roman', serif; letter-spacing: 0.5px;"
+            class="px-8 py-4 rounded-full bg-[#E91E63] text-white font-semibold 
+            hover:bg-[#D81B60] transition-all duration-300 text-lg tracking-wide
+            shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            style="font-family: 'Inter', 'Segoe UI', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif; 
+                   letter-spacing: 0.8px; 
+                   font-weight: 600;
+                   text-transform: uppercase;
+                   font-size: 0.95rem;"
           >
             Find My Perfect Café
           </button>
