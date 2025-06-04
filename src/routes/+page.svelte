@@ -119,19 +119,26 @@
   <main class="max-w-4xl mx-auto px-4 py-12">
     {#if !showSearchForm}
       <div class="text-center space-y-6">
-        <h1 class="text-4xl font-bold text-neutral-900">
-          Discover your perfect<br>café experience
+        <h1 class="text-5xl font-bold text-neutral-900 leading-tight tracking-tight" 
+            style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
+          Discover your perfect<br>
+          <span class="bg-gradient-to-r from-[#E91E63] to-[#C2185B] bg-clip-text text-transparent">
+            café sanctuary
+          </span>
         </h1>
-        <p class="text-lg text-neutral-600">
-          Find the ideal spot that matches your vibe and needs
+        <p class="text-xl text-neutral-600 max-w-2xl mx-auto leading-relaxed"
+           style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;">
+          Find the ideal sanctuary that matches your vibe and elevates your day
         </p>
         <div class="flex justify-center">
           <button
             on:click={handleStartSearch}
-            class="px-6 py-3 rounded-full bg-[#E91E63] text-white font-medium 
-            hover:bg-[#D81B60] transition-colors"
+            class="px-8 py-4 rounded-full bg-gradient-to-r from-[#E91E63] to-[#C2185B] text-white font-bold text-lg
+            hover:from-[#D81B60] hover:to-[#AD1457] transition-all duration-300 transform hover:scale-105
+            shadow-lg hover:shadow-xl tracking-wide"
+            style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: 0.5px;"
           >
-            Find My Perfect Café
+            Discover Your Café Sanctuary
           </button>
         </div>
       </div>

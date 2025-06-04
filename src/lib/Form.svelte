@@ -193,15 +193,16 @@
     <button
       on:click={handleSubmit}
       disabled={!location || !mood || loading}
-      class="w-full py-4 rounded-xl font-semibold transition-all
+      class="w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 tracking-wide
       {loading || !location || !mood
         ? 'bg-neutral-100 text-neutral-400'
-        : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white hover:from-pink-700 hover:to-pink-600'}"
+        : 'bg-gradient-to-r from-pink-600 to-pink-500 text-white hover:from-pink-700 hover:to-pink-600 transform hover:scale-[1.02] shadow-lg hover:shadow-xl'}"
+      style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: 0.5px;"
     >
       {#if loading}
         <LoadingIndicator />
       {:else}
-        Find My Perfect Café
+        Discover Your Café Sanctuary
       {/if}
     </button>
 
