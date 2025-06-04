@@ -15,11 +15,12 @@
             on:click={() => dispatch('click')}
             class="w-full md:w-auto text-center bg-pink-600 hover:bg-pink-700 mb-4 flex-none rounded-full text-white font-medium py-3 px-6 mr-8
                    transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-            style="font-family: 'Inter', 'Segoe UI', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif; 
-                   letter-spacing: 0.8px; 
-                   font-weight: 600;
-                   text-transform: uppercase;
-                   font-size: 0.95rem;"
+            style="font-family: 'Playfair Display', 'Georgia', 'Times New Roman', serif; 
+                   letter-spacing: 1.2px; 
+                   font-weight: 700;
+                   text-transform: none;
+                   font-size: 1.1rem;
+                   font-style: italic;"
         >
             Find My Perfect Café
         </button>
